@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Download Test Page</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-5">
+        <h1>🧪 Download Test Page</h1>
+        <p class="lead">Test download functionality directly</p>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">📖 PDF Downloads</h5>
+                        <div class="d-grid gap-2">
+                            <a href="/download-pdf/4ea2dd96" class="btn btn-success" download="test_storybook.pdf">Download PDF (Story 4ea2dd96)</a>
+                            <a href="/download-pdf/65ab69b4" class="btn btn-success" download="test_storybook.pdf">Download PDF (Story 65ab69b4)</a>
+                            <a href="/download-pdf/88b6cff3" class="btn btn-success" download="test_storybook.pdf">Download PDF (Story 88b6cff3)</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">🎵 Audiobook Downloads</h5>
+                        <div class="d-grid gap-2">
+                            <a href="/download-audiobook/4ea2dd96" class="btn btn-warning" download="test_audiobook.zip">Download Audiobook (Story 4ea2dd96)</a>
+                            <a href="/download-audiobook/65ab69b4" class="btn btn-warning" download="test_audiobook.zip">Download Audiobook (Story 65ab69b4)</a>
+                            <a href="/download-audiobook/88b6cff3" class="btn btn-warning" download="test_audiobook.zip">Download Audiobook (Story 88b6cff3)</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">🔍 Debug Information</h5>
+                        <div class="d-grid gap-2">
+                            <a href="/debug/4ea2dd96" class="btn btn-info" target="_blank">Debug Story 4ea2dd96</a>
+                            <a href="/debug/65ab69b4" class="btn btn-info" target="_blank">Debug Story 65ab69b4</a>
+                            <a href="/debug/88b6cff3" class="btn btn-info" target="_blank">Debug Story 88b6cff3</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">🔧 JavaScript Test</h5>
+                        <button class="btn btn-primary" onclick="testDownload()">Test JavaScript Download</button>
+                        <div id="testResult" class="mt-2"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    function testDownload() {
+        const resultDiv = document.getElementById('testResult');
+        resultDiv.innerHTML = '<div class="spinner-border spinner-border-sm me-2"></div>Testing...';
+        
+        // Test PDF download
+        fetch('/download-pdf/4ea2dd96')
+        .then(response => {
+            if (response.ok) {
+                return response.blob();
+            } else {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+        })
+        .then(blob => {
+            // Create download link
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'test_storybook.pdf';
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            
+            resultDiv.innerHTML = `<div class="alert alert-success">✅ PDF download successful! Size: ${blob.size} bytes</div>`;
+        })
+        .catch(error => {
+            resultDiv.innerHTML = `<div class="alert alert-danger">❌ Download failed: ${error.message}</div>`;
+        });
+    }
+    </script>
+</body>
+</html>

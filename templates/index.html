@@ -56,6 +56,9 @@
                     <a href="#" class="btn btn-success btn-lg me-2" id="downloadBtn">
                         📖 Download PDF
                     </a>
+                    <a href="#" class="btn btn-warning btn-lg me-2" id="audiobookBtn">
+                        🎵 Download Audiobook
+                    </a>
                     <a href="#" class="btn btn-primary btn-lg" id="readerBtn">
                         🎧 Open Book Reader
                     </a>
@@ -165,8 +168,86 @@ document.getElementById('storyForm').addEventListener('submit', function(e) {
         progressText.textContent = 'Complete!';
         
         if (data.success) {
-            document.getElementById('downloadBtn').href = data.pdf_url;
-            document.getElementById('readerBtn').href = data.reader_url;
+            // Set up download links with proper attributes
+            const downloadBtn = document.getElementById('downloadBtn');
+            const audiobookBtn = document.getElementById('audiobookBtn');
+            const readerBtn = document.getElementById('readerBtn');
+            
+            downloadBtn.href = data.pdf_url;
+            downloadBtn.download = `storybook_${data.story_id}.pdf`;
+            downloadBtn.target = '_blank';
+            
+            audiobookBtn.href = data.audiobook_url;
+            audiobookBtn.download = `audiobook_${data.story_id}.zip`;
+            audiobookBtn.target = '_blank';
+            
+            readerBtn.href = data.reader_url;
+            readerBtn.target = '_blank';
+            
+            // Debug: Log the URLs
+            console.log('Download URLs set:', {
+                pdf_url: data.pdf_url,
+                audiobook_url: data.audiobook_url,
+                reader_url: data.reader_url,
+                story_id: data.story_id
+            });
+            
+            // Add click handlers for better download support
+            downloadBtn.onclick = function(e) {
+                console.log('PDF download clicked:', data.pdf_url);
+                // Force download using fetch if href fails
+                fetch(data.pdf_url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Download failed');
+                    }
+                    return response.blob();
+                })
+                .then(blob => {
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `storybook_${data.story_id}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                })
+                .catch(error => {
+                    console.error('PDF download failed:', error);
+                    alert('PDF download failed. Please try again.');
+                });
+                e.preventDefault();
+                return false;
+            };
+            
+            audiobookBtn.onclick = function(e) {
+                console.log('Audiobook download clicked:', data.audiobook_url);
+                // Force download using fetch if href fails
+                fetch(data.audiobook_url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Download failed');
+                    }
+                    return response.blob();
+                })
+                .then(blob => {
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `audiobook_${data.story_id}.zip`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                })
+                .catch(error => {
+                    console.error('Audiobook download failed:', error);
+                    alert('Audiobook download failed. Please try again.');
+                });
+                e.preventDefault();
+                return false;
+            };
             
             setTimeout(() => {
                 progressCard.classList.add('d-none');
