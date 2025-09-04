@@ -205,24 +205,4 @@ IMAGE_MODEL_VERSION = "black-forest-labs/flux-dev"
 4. Test thoroughly
 5. Submit a pull request
 
-## 📄 License
-
-This project is open source. Please check the license file for details.
-
-## 🙏 Acknowledgments
-
-- OpenRouter for text generation and TTS APIs
-- Replicate for image generation API
-- Bootstrap for responsive design
-- ReportLab for PDF generation
-
-## 📞 Support
-
-For issues or questions:
-1. Check the troubleshooting section
-2. Review the API documentation
-3. Open an issue on the repository
-
----
-
-**Happy storytelling! 📚✨**
+ 
