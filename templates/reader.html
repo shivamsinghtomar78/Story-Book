@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+
+{% block title %}{{ story_data.title }} - Book Reader{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <!-- Header -->
+        <div class="text-center mb-4">
+            <h1 class="display-5 text-primary">📖 {{ story_data.title }}</h1>
+            <div class="mb-3">
+                <a href="{{ url_for('home') }}" class="btn btn-outline-primary">← Create New Story</a>
+            </div>
+        </div>
+
+        <!-- Story Reader Card -->
+        <div class="card shadow-lg">
+            <div class="card-body p-4">
+                <!-- Page Navigation -->
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <button class="btn btn-outline-primary" id="prevBtn" onclick="changePage(-1)">
+                        ⬅ Previous
+                    </button>
+                    
+                    <div class="page-indicator">
+                        <span class="badge bg-primary fs-6" id="pageNumber">Page 1 of 5</span>
+                    </div>
+                    
+                    <button class="btn btn-outline-primary" id="nextBtn" onclick="changePage(1)">
+                        Next ➡
+                    </button>
+                </div>
+
+                <!-- Page Content -->
+                <div class="page-content text-center">
+                    <!-- Image Container -->
+                    <div class="image-container mb-4">
+                        <img id="pageImage" 
+                             src="" 
+                             alt="Story illustration" 
+                             class="img-fluid rounded shadow"
+                             style="max-height: 400px; width: auto;">
+                    </div>
+
+                    <!-- Text Container -->
+                    <div class="text-container">
+                        <p id="pageText" class="fs-4 text-dark lh-lg px-3"></p>
+                    </div>
+
+                    <!-- Audio Controls -->
+                    <div class="audio-controls mt-4">
+                        <button class="btn btn-success btn-lg" id="playBtn" onclick="toggleAudio()">
+                            <span id="playIcon">🔊</span> <span id="playText">Play Audio</span>
+                        </button>
+                        <audio id="pageAudio" preload="none"></audio>
+                    </div>
+                </div>
+
+                <!-- Progress Bar -->
+                <div class="progress mt-4">
+                    <div class="progress-bar bg-success" id="progressBar" style="width: 20%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Navigation -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h6 class="card-title">Quick Page Navigation</h6>
+                        <div class="d-flex justify-content-center gap-2">
+                            {% for page in story_data.pages %}
+                            <button class="btn btn-outline-secondary page-nav-btn" 
+                                    data-page="{{ page.page }}" 
+                                    onclick="goToPage({{ page.page }})">
+                                {{ page.page }}
+                            </button>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Story Data (Hidden) -->
+<script type="application/json" id="storyData">
+{
+    "title": "{{ story_data.title }}",
+    "pages": {{ story_data.pages | tojsonfilter }},
+    "image_paths": {{ image_paths | tojsonfilter }},
+    "audio_paths": {{ audio_paths | tojsonfilter }},
+    "story_id": "{{ story_id }}"
+}
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentPage = 1;
+let storyData;
+let currentAudio = null;
+
+// Load story data
+document.addEventListener('DOMContentLoaded', function() {
+    storyData = JSON.parse(document.getElementById('storyData').textContent);
+    updatePage();
+});
+
+function updatePage() {
+    const page = storyData.pages[currentPage - 1];
+    
+    // Update page number
+    document.getElementById('pageNumber').textContent = `Page ${currentPage} of ${storyData.pages.length}`;
+    
+    // Update text
+    document.getElementById('pageText').textContent = page.text;
+    
+    // Update image
+    const imageElement = document.getElementById('pageImage');
+    if (storyData.image_paths[currentPage - 1]) {
+        const imagePath = storyData.image_paths[currentPage - 1];
+        const imageName = imagePath.split('/').pop().split('\\').pop(); // Handle both path separators
+        imageElement.src = `/image/${imageName}`;
+        imageElement.style.display = 'block';
+    } else {
+        imageElement.style.display = 'none';
+    }
+    
+    // Update navigation buttons
+    document.getElementById('prevBtn').disabled = currentPage === 1;
+    document.getElementById('nextBtn').disabled = currentPage === storyData.pages.length;
+    
+    // Update progress bar
+    const progress = (currentPage / storyData.pages.length) * 100;
+    document.getElementById('progressBar').style.width = progress + '%';
+    
+    // Update quick navigation
+    document.querySelectorAll('.page-nav-btn').forEach(btn => {
+        btn.classList.toggle('btn-primary', parseInt(btn.dataset.page) === currentPage);
+        btn.classList.toggle('btn-outline-secondary', parseInt(btn.dataset.page) !== currentPage);
+    });
+    
+    // Stop current audio and reset play button
+    stopAudio();
+    resetPlayButton();
+    
+    // Load new audio
+    loadAudio();
+}
+
+function changePage(direction) {
+    const newPage = currentPage + direction;
+    if (newPage >= 1 && newPage <= storyData.pages.length) {
+        currentPage = newPage;
+        updatePage();
+    }
+}
+
+function goToPage(pageNumber) {
+    if (pageNumber >= 1 && pageNumber <= storyData.pages.length) {
+        currentPage = pageNumber;
+        updatePage();
+    }
+}
+
+function loadAudio() {
+    const audioElement = document.getElementById('pageAudio');
+    if (storyData.audio_paths[currentPage - 1]) {
+        const audioPath = storyData.audio_paths[currentPage - 1];
+        const audioName = audioPath.split('/').pop().split('\\').pop(); // Handle both path separators
+        audioElement.src = `/audio/${audioName}`;
+        audioElement.load();
+    } else {
+        audioElement.src = '';
+    }
+}
+
+function toggleAudio() {
+    const audioElement = document.getElementById('pageAudio');
+    const playBtn = document.getElementById('playBtn');
+    const playIcon = document.getElementById('playIcon');
+    const playText = document.getElementById('playText');
+    
+    if (audioElement.paused) {
+        if (audioElement.src) {
+            audioElement.play()
+                .then(() => {
+                    playIcon.textContent = '⏸';
+                    playText.textContent = 'Pause Audio';
+                    playBtn.classList.remove('btn-success');
+                    playBtn.classList.add('btn-warning');
+                })
+                .catch(error => {
+                    console.error('Error playing audio:', error);
+                    alert('Could not play audio. The audio file might not be available.');
+                });
+        } else {
+            alert('Audio is not available for this page.');
+        }
+    } else {
+        audioElement.pause();
+        resetPlayButton();
+    }
+}
+
+function stopAudio() {
+    const audioElement = document.getElementById('pageAudio');
+    if (!audioElement.paused) {
+        audioElement.pause();
+        audioElement.currentTime = 0;
+    }
+}
+
+function resetPlayButton() {
+    const playBtn = document.getElementById('playBtn');
+    const playIcon = document.getElementById('playIcon');
+    const playText = document.getElementById('playText');
+    
+    playIcon.textContent = '🔊';
+    playText.textContent = 'Play Audio';
+    playBtn.classList.remove('btn-warning');
+    playBtn.classList.add('btn-success');
+}
+
+// Audio event listeners
+document.getElementById('pageAudio').addEventListener('ended', function() {
+    resetPlayButton();
+    // Auto-advance to next page when audio finishes
+    if (currentPage < storyData.pages.length) {
+        setTimeout(() => changePage(1), 1000);
+    }
+});
+
+// Keyboard navigation
+document.addEventListener('keydown', function(e) {
+    switch(e.key) {
+        case 'ArrowLeft':
+            changePage(-1);
+            break;
+        case 'ArrowRight':
+            changePage(1);
+            break;
+        case ' ':
+        case 'Enter':
+            e.preventDefault();
+            toggleAudio();
+            break;
+    }
+});
+</script>
+{% endblock %}

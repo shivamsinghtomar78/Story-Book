@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="hero-section text-center mb-5">
+            <h1 class="display-4 text-primary mb-4">✨ Create Your Magic Storybook</h1>
+            <p class="lead">Tell us your idea, and we'll create a beautiful 5-page children's storybook with illustrations and narration!</p>
+        </div>
+
+        <div class="card shadow-lg">
+            <div class="card-body p-4">
+                <form id="storyForm">
+                    <div class="mb-4">
+                        <label for="prompt" class="form-label fw-semibold">What story would you like to create?</label>
+                        <textarea 
+                            class="form-control form-control-lg" 
+                            id="prompt" 
+                            name="prompt" 
+                            rows="4" 
+                            placeholder="Example: A brave little mouse who goes on an adventure to find the magical cheese kingdom..."
+                            required
+                        ></textarea>
+                        <div class="form-text">Be descriptive! Mention characters, settings, and the adventure you'd like to see.</div>
+                    </div>
+                    
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg" id="generateBtn">
+                            <span class="spinner-border spinner-border-sm me-2 d-none" id="spinner"></span>
+                            🎨 Generate My Storybook
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Progress Section -->
+        <div class="card mt-4 d-none" id="progressCard">
+            <div class="card-body">
+                <h5 class="card-title">🔄 Creating your storybook...</h5>
+                <div class="progress mb-3">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar" 
+                         style="width: 0%"></div>
+                </div>
+                <div id="progressText">Generating story text...</div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="card mt-4 d-none" id="resultsCard">
+            <div class="card-body text-center">
+                <h5 class="card-title text-success">🎉 Your storybook is ready!</h5>
+                <p class="card-text">Your magical storybook has been created with illustrations and narration.</p>
+                
+                <div class="d-grid gap-2 d-md-flex justify-content-md-center">
+                    <a href="#" class="btn btn-success btn-lg me-2" id="downloadBtn">
+                        📖 Download PDF
+                    </a>
+                    <a href="#" class="btn btn-primary btn-lg" id="readerBtn">
+                        🎧 Open Book Reader
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Error Section -->
+        <div class="alert alert-danger mt-4 d-none" id="errorAlert">
+            <h6 class="alert-heading">❌ Oops! Something went wrong</h6>
+            <p class="mb-0" id="errorMessage"></p>
+        </div>
+    </div>
+</div>
+
+<!-- Features Section -->
+<div class="row mt-5">
+    <div class="col-12">
+        <h2 class="text-center mb-4">🌟 Features</h2>
+    </div>
+    
+    <div class="col-md-4 mb-3">
+        <div class="card h-100 text-center">
+            <div class="card-body">
+                <div class="display-1 mb-3">📝</div>
+                <h5 class="card-title">AI Story Generation</h5>
+                <p class="card-text">Creates engaging 5-page children's stories based on your prompt</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4 mb-3">
+        <div class="card h-100 text-center">
+            <div class="card-body">
+                <div class="display-1 mb-3">🎨</div>
+                <h5 class="card-title">Beautiful Illustrations</h5>
+                <p class="card-text">Consistent character design across all pages with vibrant artwork</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4 mb-3">
+        <div class="card h-100 text-center">
+            <div class="card-body">
+                <div class="display-1 mb-3">🔊</div>
+                <h5 class="card-title">Audio Narration</h5>
+                <p class="card-text">Listen to your story with natural human voice narration</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('storyForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const generateBtn = document.getElementById('generateBtn');
+    const spinner = document.getElementById('spinner');
+    const progressCard = document.getElementById('progressCard');
+    const resultsCard = document.getElementById('resultsCard');
+    const errorAlert = document.getElementById('errorAlert');
+    
+    // Reset UI
+    resultsCard.classList.add('d-none');
+    errorAlert.classList.add('d-none');
+    
+    // Show loading state
+    generateBtn.disabled = true;
+    spinner.classList.remove('d-none');
+    progressCard.classList.remove('d-none');
+    
+    // Simulate progress updates
+    let progress = 0;
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    
+    const progressMessages = [
+        'Generating story text...',
+        'Creating page illustrations...',
+        'Generating audio narration...',
+        'Building PDF storybook...',
+        'Finishing touches...'
+    ];
+    
+    const progressInterval = setInterval(() => {
+        progress += Math.random() * 20;
+        if (progress > 90) progress = 90;
+        
+        progressBar.style.width = progress + '%';
+        const messageIndex = Math.floor((progress / 100) * progressMessages.length);
+        if (messageIndex < progressMessages.length) {
+            progressText.textContent = progressMessages[messageIndex];
+        }
+    }, 2000);
+    
+    fetch('/generate', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        clearInterval(progressInterval);
+        progressBar.style.width = '100%';
+        progressText.textContent = 'Complete!';
+        
+        if (data.success) {
+            document.getElementById('downloadBtn').href = data.pdf_url;
+            document.getElementById('readerBtn').href = data.reader_url;
+            
+            setTimeout(() => {
+                progressCard.classList.add('d-none');
+                resultsCard.classList.remove('d-none');
+            }, 1000);
+        } else {
+            throw new Error(data.error || 'Unknown error occurred');
+        }
+    })
+    .catch(error => {
+        clearInterval(progressInterval);
+        progressCard.classList.add('d-none');
+        document.getElementById('errorMessage').textContent = error.message;
+        errorAlert.classList.remove('d-none');
+    })
+    .finally(() => {
+        generateBtn.disabled = false;
+        spinner.classList.add('d-none');
+    });
+});
+</script>
+{% endblock %}
