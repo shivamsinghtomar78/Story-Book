@@ -197,12 +197,6 @@ IMAGE_MODEL_VERSION = "black-forest-labs/flux-dev"
 - File uploads are validated and secured
 - Session data is temporary
 
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+ 
 
  
