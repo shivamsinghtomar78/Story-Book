@@ -24,10 +24,21 @@
                         <div class="form-text">Be descriptive! Mention characters, settings, and the adventure you'd like to see.</div>
                     </div>
                     
+                    <div class="mb-4">
+                        <label for="length" class="form-label fw-semibold">Story Length</label>
+                        <select class="form-select form-select-lg" id="length" name="length">
+                            <option value="short">Short Story (3 pages) - Perfect for toddlers</option>
+                            <option value="normal" selected>Normal Story (5 pages) - Standard children's story</option>
+                            <option value="long">Long Story (8 pages) - More detailed adventure</option>
+                            <option value="extended">Extended Story (10 pages) - Rich, detailed tale</option>
+                        </select>
+                        <div class="form-text">Choose the length that best fits your reading time and audience.</div>
+                    </div>
+                    
                     <div class="d-grid">
-                        <button type="submit" class="btn btn-primary btn-lg" id="generateBtn">
-                            <span class="spinner-border spinner-border-sm me-2 d-none" id="spinner"></span>
-                            🎨 Generate My Storybook
+                        <button type="submit" class="btn btn-primary btn-lg smooth-hover" id="generateBtn">
+                            <span class="loading-spinner me-2 d-none" id="spinner"></span>
+                            <span id="generateText">🎨 Generate My Storybook</span>
                         </button>
                     </div>
                 </form>
@@ -128,10 +139,13 @@ document.getElementById('storyForm').addEventListener('submit', function(e) {
     resultsCard.classList.add('d-none');
     errorAlert.classList.add('d-none');
     
-    // Show loading state
+    // Show loading state with animation
     generateBtn.disabled = true;
+    generateBtn.classList.add('loading');
     spinner.classList.remove('d-none');
+    document.getElementById('generateText').textContent = 'Creating Your Story...';
     progressCard.classList.remove('d-none');
+    progressCard.classList.add('fade-in');
     
     // Simulate progress updates
     let progress = 0;
@@ -265,7 +279,9 @@ document.getElementById('storyForm').addEventListener('submit', function(e) {
     })
     .finally(() => {
         generateBtn.disabled = false;
+        generateBtn.classList.remove('loading');
         spinner.classList.add('d-none');
+        document.getElementById('generateText').textContent = '🎨 Generate My Storybook';
     });
 });
 </script>

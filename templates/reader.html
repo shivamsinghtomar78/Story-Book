@@ -4,82 +4,163 @@
 
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-lg-10">
-        <!-- Header -->
+    <div class="col-lg-12 col-xl-10">
+        <!-- Enhanced Header -->
         <div class="text-center mb-4">
-            <h1 class="display-5 text-primary">📖 {{ story_data.title }}</h1>
-            <div class="mb-3">
-                <a href="{{ url_for('home') }}" class="btn btn-outline-primary">← Create New Story</a>
+            <h1 class="display-4 text-primary mb-3">📖 {{ story_data.title }}</h1>
+            <div class="d-flex justify-content-center gap-3 mb-3">
+                <a href="{{ url_for('home') }}" class="btn btn-outline-primary btn-lg">← Create New Story</a>
+                <button class="btn btn-info btn-lg" onclick="toggleFullscreen()">🔍 Fullscreen</button>
+                <button class="btn btn-secondary btn-lg" onclick="toggleAutoPlay()">
+                    <span id="autoPlayIcon">⏯️</span> Auto-Play
+                </button>
             </div>
         </div>
 
-        <!-- Story Reader Card -->
-        <div class="card shadow-lg">
-            <div class="card-body p-4">
-                <!-- Page Navigation -->
-                <div class="d-flex justify-content-between align-items-center mb-4">
-                    <button class="btn btn-outline-primary" id="prevBtn" onclick="changePage(-1)">
-                        ⬅ Previous
+        <!-- Enhanced Story Reader Card -->
+        <div class="card shadow-lg reader-card">
+            <div class="card-body p-5">
+                <!-- Enhanced Page Navigation -->
+                <div class="d-flex justify-content-between align-items-center mb-5">
+                    <button class="btn btn-primary btn-lg px-4" id="prevBtn" onclick="changePage(-1)">
+                        ⬅️ Previous
                     </button>
                     
                     <div class="page-indicator">
-                        <span class="badge bg-primary fs-6" id="pageNumber">Page 1 of 5</span>
+                        <span class="badge bg-primary fs-4 px-4 py-2" id="pageNumber">Page 1 of {{ story_data.pages|length }}</span>
                     </div>
                     
-                    <button class="btn btn-outline-primary" id="nextBtn" onclick="changePage(1)">
-                        Next ➡
+                    <button class="btn btn-primary btn-lg px-4" id="nextBtn" onclick="changePage(1)">
+                        Next ➡️
                     </button>
                 </div>
 
-                <!-- Page Content -->
+                <!-- Enhanced Page Content -->
                 <div class="page-content text-center">
-                    <!-- Image Container -->
-                    <div class="image-container mb-4">
+                    <!-- Enhanced Image Container -->
+                    <div class="image-container mb-5">
                         <img id="pageImage" 
                              src="" 
                              alt="Story illustration" 
-                             class="img-fluid rounded shadow"
-                             style="max-height: 400px; width: auto;">
+                             class="img-fluid rounded-3 shadow-lg story-image"
+                             style="max-height: 500px; width: auto; cursor: pointer;"
+                             onclick="enlargeImage()">
                     </div>
 
-                    <!-- Text Container -->
-                    <div class="text-container">
-                        <p id="pageText" class="fs-4 text-dark lh-lg px-3"></p>
+                    <!-- Enhanced Text Container -->
+                    <div class="text-container mb-5">
+                        <div class="story-text-wrapper">
+                            <p id="pageText" class="story-text"></p>
+                        </div>
                     </div>
 
-                    <!-- Audio Controls -->
-                    <div class="audio-controls mt-4">
-                        <button class="btn btn-success btn-lg" id="playBtn" onclick="toggleAudio()">
-                            <span id="playIcon">🔊</span> <span id="playText">Play Audio</span>
-                        </button>
+                    <!-- Enhanced Audio Controls -->
+                    <div class="audio-controls mb-4">
+                        <div class="d-flex justify-content-center gap-2 mb-3 flex-wrap">
+                            <button class="btn btn-success btn-lg px-4" id="playBtn" onclick="toggleAudio()">
+                                <span id="playIcon">🔊</span> <span id="playText">Listen to Page</span>
+                            </button>
+                            <button class="btn btn-warning btn-lg" id="stopBtn" onclick="stopAudio()" style="display: none;">
+                                ⏹️ Stop
+                            </button>
+                            <button class="btn btn-info btn-lg px-4" id="playAllBtn" onclick="togglePlayAll()">
+                                <span id="playAllIcon">🎵</span> <span id="playAllText">Play Full Story</span>
+                            </button>
+                            <a class="btn btn-outline-primary btn-lg px-4" id="downloadAudioBtn" href="#" download>
+                                📥 Download Audio
+                            </a>
+                        </div>
+                        
+                        <!-- Audio Progress -->
+                        <div class="audio-progress" id="audioProgress" style="display: none;">
+                            <div class="progress mb-2">
+                                <div class="progress-bar bg-success" id="audioProgressBar" style="width: 0%"></div>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <small id="audioCurrentTime">0:00</small>
+                                <small id="audioDuration">0:00</small>
+                            </div>
+                        </div>
+                        
                         <audio id="pageAudio" preload="none"></audio>
                     </div>
                 </div>
 
-                <!-- Progress Bar -->
-                <div class="progress mt-4">
-                    <div class="progress-bar bg-success" id="progressBar" style="width: 20%"></div>
+                <!-- Enhanced Progress Bar -->
+                <div class="reading-progress mb-4">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="fw-bold">Reading Progress</span>
+                        <span id="progressPercent">{{ (100 / story_data.pages|length)|round }}%</span>
+                    </div>
+                    <div class="progress" style="height: 20px;">
+                        <div class="progress-bar bg-gradient progress-bar-striped" id="progressBar" 
+                             style="width: {{ (100 / story_data.pages|length)|round }}%"></div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Quick Navigation -->
+        <!-- Enhanced Quick Navigation -->
         <div class="row mt-4">
             <div class="col-12">
                 <div class="card">
-                    <div class="card-body">
-                        <h6 class="card-title">Quick Page Navigation</h6>
-                        <div class="d-flex justify-content-center gap-2">
+                    <div class="card-body text-center">
+                        <h5 class="card-title mb-4">📑 Quick Page Navigation</h5>
+                        <div class="d-flex justify-content-center gap-2 flex-wrap">
                             {% for page in story_data.pages %}
-                            <button class="btn btn-outline-secondary page-nav-btn" 
+                            <button class="btn btn-outline-primary page-nav-btn" 
                                     data-page="{{ page.page }}" 
                                     onclick="goToPage({{ page.page }})">
-                                {{ page.page }}
+                                Page {{ page.page }}
                             </button>
                             {% endfor %}
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- Reading Options -->
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <h6 class="card-title">📝 Text Size</h6>
+                        <div class="btn-group" role="group">
+                            <button class="btn btn-outline-secondary" onclick="changeTextSize('small')">Small</button>
+                            <button class="btn btn-outline-secondary active" onclick="changeTextSize('medium')">Medium</button>
+                            <button class="btn btn-outline-secondary" onclick="changeTextSize('large')">Large</button>
+                            <button class="btn btn-outline-secondary" onclick="changeTextSize('xlarge')">X-Large</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <h6 class="card-title">🎨 Reading Mode</h6>
+                        <div class="btn-group" role="group">
+                            <button class="btn btn-outline-secondary active" onclick="changeMode('normal')">Normal</button>
+                            <button class="btn btn-outline-secondary" onclick="changeMode('focus')">Focus</button>
+                            <button class="btn btn-outline-secondary" onclick="changeMode('night')">Night</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Image Modal for Enlargement -->
+<div class="modal fade" id="imageModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Story Illustration</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img id="enlargedImage" src="" class="img-fluid" alt="Enlarged story illustration">
             </div>
         </div>
     </div>
@@ -101,29 +182,45 @@
 <script>
 let currentPage = 1;
 let storyData;
-let currentAudio = null;
+let isAutoPlay = false;
+let isFullscreen = false;
+let currentTextSize = 'medium';
+let currentMode = 'normal';
+let isPlayingAll = false;
+let playAllQueue = [];
+let currentPlayAllIndex = 0;
 
 // Load story data
 document.addEventListener('DOMContentLoaded', function() {
     storyData = JSON.parse(document.getElementById('storyData').textContent);
     updatePage();
+    setupAudioEventListeners();
+    loadUserPreferences();
+    
+    // Show helpful tip
+    setTimeout(function() {
+        if (typeof StorybookUtils !== 'undefined') {
+            StorybookUtils.showNotification('💡 Tip: Use arrow keys to navigate, spacebar to play/pause audio!', 'info');
+        }
+    }, 2000);
 });
 
 function updatePage() {
     const page = storyData.pages[currentPage - 1];
     
     // Update page number
-    document.getElementById('pageNumber').textContent = `Page ${currentPage} of ${storyData.pages.length}`;
+    document.getElementById('pageNumber').textContent = 'Page ' + currentPage + ' of ' + storyData.pages.length;
     
-    // Update text
-    document.getElementById('pageText').textContent = page.text;
+    // Update text with enhanced formatting
+    const pageTextElement = document.getElementById('pageText');
+    pageTextElement.textContent = page.text;
     
     // Update image
     const imageElement = document.getElementById('pageImage');
     if (storyData.image_paths[currentPage - 1]) {
         const imagePath = storyData.image_paths[currentPage - 1];
-        const imageName = imagePath.split('/').pop().split('\\').pop(); // Handle both path separators
-        imageElement.src = `/image/${imageName}`;
+        const imageName = imagePath.split('/').pop().split('\\').pop();
+        imageElement.src = '/image/' + imageName;
         imageElement.style.display = 'block';
     } else {
         imageElement.style.display = 'none';
@@ -133,29 +230,87 @@ function updatePage() {
     document.getElementById('prevBtn').disabled = currentPage === 1;
     document.getElementById('nextBtn').disabled = currentPage === storyData.pages.length;
     
-    // Update progress bar
+    // Update progress bar and percentage with animation
     const progress = (currentPage / storyData.pages.length) * 100;
-    document.getElementById('progressBar').style.width = progress + '%';
+    const progressBar = document.getElementById('progressBar');
+    const progressPercent = document.getElementById('progressPercent');
+    
+    progressBar.classList.add('progress-animated');
+    progressBar.style.width = progress + '%';
+    progressPercent.textContent = Math.round(progress) + '%';
+    
+    setTimeout(function() {
+        progressBar.classList.remove('progress-animated');
+    }, 800);
     
     // Update quick navigation
-    document.querySelectorAll('.page-nav-btn').forEach(btn => {
-        btn.classList.toggle('btn-primary', parseInt(btn.dataset.page) === currentPage);
-        btn.classList.toggle('btn-outline-secondary', parseInt(btn.dataset.page) !== currentPage);
+    const navButtons = document.querySelectorAll('.page-nav-btn');
+    navButtons.forEach(function(btn) {
+        const pageNum = parseInt(btn.dataset.page);
+        btn.classList.toggle('btn-primary', pageNum === currentPage);
+        btn.classList.toggle('btn-outline-primary', pageNum !== currentPage);
     });
     
-    // Stop current audio and reset play button
+    // Stop current audio and reset controls
     stopAudio();
-    resetPlayButton();
+    resetAudioControls();
     
     // Load new audio
     loadAudio();
+    
+    // Update download audio link
+    updateDownloadAudioLink();
+    
+    // Auto-play if enabled
+    if (isAutoPlay && currentPage > 1) {
+        setTimeout(function() {
+            toggleAudio();
+        }, 1000);
+    }
+    
+    // Save current page
+    localStorage.setItem('storybook_' + storyData.story_id + '_page', currentPage);
 }
 
 function changePage(direction) {
     const newPage = currentPage + direction;
     if (newPage >= 1 && newPage <= storyData.pages.length) {
-        currentPage = newPage;
-        updatePage();
+        // Add smooth page transition animation
+        const pageContent = document.querySelector('.page-content');
+        const imageElement = document.getElementById('pageImage');
+        const textElement = document.getElementById('pageText');
+        
+        // Start transition
+        pageContent.classList.add('page-transition', 'changing');
+        
+        // Add button press animation
+        const btn = direction > 0 ? document.getElementById('nextBtn') : document.getElementById('prevBtn');
+        btn.classList.add('btn-press');
+        setTimeout(function() {
+            btn.classList.remove('btn-press');
+        }, 200);
+        
+        setTimeout(function() {
+            currentPage = newPage;
+            updatePage();
+            
+            // Complete transition
+            pageContent.classList.remove('changing');
+            
+            // Add entrance animations
+            if (imageElement.src) {
+                imageElement.classList.add('bounce-in');
+                setTimeout(function() {
+                    imageElement.classList.remove('bounce-in');
+                }, 800);
+            }
+            
+            textElement.classList.add('fade-in');
+            setTimeout(function() {
+                textElement.classList.remove('fade-in');
+            }, 600);
+            
+        }, 200);
     }
 }
 
@@ -170,8 +325,8 @@ function loadAudio() {
     const audioElement = document.getElementById('pageAudio');
     if (storyData.audio_paths[currentPage - 1]) {
         const audioPath = storyData.audio_paths[currentPage - 1];
-        const audioName = audioPath.split('/').pop().split('\\').pop(); // Handle both path separators
-        audioElement.src = `/audio/${audioName}`;
+        const audioName = audioPath.split('/').pop().split('\\').pop();
+        audioElement.src = '/audio/' + audioName;
         audioElement.load();
     } else {
         audioElement.src = '';
@@ -181,28 +336,42 @@ function loadAudio() {
 function toggleAudio() {
     const audioElement = document.getElementById('pageAudio');
     const playBtn = document.getElementById('playBtn');
+    const stopBtn = document.getElementById('stopBtn');
     const playIcon = document.getElementById('playIcon');
     const playText = document.getElementById('playText');
     
     if (audioElement.paused) {
         if (audioElement.src) {
             audioElement.play()
-                .then(() => {
-                    playIcon.textContent = '⏸';
+                .then(function() {
+                    playIcon.textContent = '⏸️';
                     playText.textContent = 'Pause Audio';
                     playBtn.classList.remove('btn-success');
-                    playBtn.classList.add('btn-warning');
+                    playBtn.classList.add('btn-warning', 'audio-playing');
+                    stopBtn.style.display = 'inline-block';
+                    
+                    // Show audio progress with animation
+                    const audioProgress = document.getElementById('audioProgress');
+                    audioProgress.style.display = 'block';
+                    audioProgress.classList.add('fade-in');
+                    setTimeout(function() {
+                        audioProgress.classList.remove('fade-in');
+                    }, 600);
                 })
-                .catch(error => {
+                .catch(function(error) {
                     console.error('Error playing audio:', error);
-                    alert('Could not play audio. The audio file might not be available.');
+                    if (typeof StorybookUtils !== 'undefined') {
+                        StorybookUtils.showNotification('Could not play audio. The audio file might not be available.', 'warning');
+                    }
                 });
         } else {
-            alert('Audio is not available for this page.');
+            if (typeof StorybookUtils !== 'undefined') {
+                StorybookUtils.showNotification('Audio is not available for this page.', 'info');
+            }
         }
     } else {
         audioElement.pause();
-        resetPlayButton();
+        resetAudioControls();
     }
 }
 
@@ -212,43 +381,386 @@ function stopAudio() {
         audioElement.pause();
         audioElement.currentTime = 0;
     }
+    resetAudioControls();
 }
 
-function resetPlayButton() {
+function resetAudioControls() {
     const playBtn = document.getElementById('playBtn');
+    const stopBtn = document.getElementById('stopBtn');
     const playIcon = document.getElementById('playIcon');
     const playText = document.getElementById('playText');
     
     playIcon.textContent = '🔊';
-    playText.textContent = 'Play Audio';
-    playBtn.classList.remove('btn-warning');
+    playText.textContent = 'Listen to Story';
+    playBtn.classList.remove('btn-warning', 'audio-playing');
     playBtn.classList.add('btn-success');
+    stopBtn.style.display = 'none';
+    
+    // Hide audio progress with animation
+    const audioProgress = document.getElementById('audioProgress');
+    audioProgress.style.display = 'none';
+    document.getElementById('audioProgressBar').style.width = '0%';
 }
 
-// Audio event listeners
-document.getElementById('pageAudio').addEventListener('ended', function() {
-    resetPlayButton();
-    // Auto-advance to next page when audio finishes
-    if (currentPage < storyData.pages.length) {
-        setTimeout(() => changePage(1), 1000);
-    }
-});
+function setupAudioEventListeners() {
+    const audioElement = document.getElementById('pageAudio');
+    
+    audioElement.addEventListener('ended', function() {
+        resetAudioControls();
+        
+        if (isPlayingAll) {
+            // Continue with play-all sequence
+            currentPlayAllIndex++;
+            setTimeout(function() {
+                playNextInQueue();
+            }, 1000);
+        } else if (isAutoPlay && currentPage < storyData.pages.length) {
+            // Auto-advance to next page when audio finishes
+            setTimeout(function() {
+                changePage(1);
+            }, 1500);
+        } else if (currentPage >= storyData.pages.length) {
+            if (typeof StorybookUtils !== 'undefined') {
+                StorybookUtils.showNotification('Story completed! 🎉', 'success');
+            }
+        }
+    });
+    
+    audioElement.addEventListener('timeupdate', function() {
+        if (this.duration) {
+            const progress = (this.currentTime / this.duration) * 100;
+            document.getElementById('audioProgressBar').style.width = progress + '%';
+            document.getElementById('audioCurrentTime').textContent = formatTime(this.currentTime);
+            document.getElementById('audioDuration').textContent = formatTime(this.duration);
+        }
+    });
+    
+    audioElement.addEventListener('loadedmetadata', function() {
+        document.getElementById('audioDuration').textContent = formatTime(this.duration);
+    });
+}
 
-// Keyboard navigation
+function formatTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return mins + ':' + secs.toString().padStart(2, '0');
+}
+
+// Enhanced Features
+function toggleAutoPlay() {
+    isAutoPlay = !isAutoPlay;
+    const autoPlayIcon = document.getElementById('autoPlayIcon');
+    const btn = document.querySelector('[onclick="toggleAutoPlay()"]');
+    
+    if (isAutoPlay) {
+        autoPlayIcon.textContent = '⏸️';
+        if (btn) btn.classList.add('auto-play-active');
+        if (typeof StorybookUtils !== 'undefined') {
+            StorybookUtils.showNotification('Auto-play enabled! Audio will play automatically on each page.', 'success');
+        }
+    } else {
+        autoPlayIcon.textContent = '⏯️';
+        if (btn) btn.classList.remove('auto-play-active');
+        if (typeof StorybookUtils !== 'undefined') {
+            StorybookUtils.showNotification('Auto-play disabled.', 'info');
+        }
+    }
+    
+    localStorage.setItem('storybook_autoplay', isAutoPlay);
+}
+
+function toggleFullscreen() {
+    const container = document.querySelector('.container');
+    
+    if (!isFullscreen) {
+        container.classList.add('fullscreen-mode');
+        isFullscreen = true;
+        if (typeof StorybookUtils !== 'undefined') {
+            StorybookUtils.showNotification('Fullscreen mode enabled. Press ESC to exit.', 'info');
+        }
+    } else {
+        container.classList.remove('fullscreen-mode');
+        isFullscreen = false;
+        if (typeof StorybookUtils !== 'undefined') {
+            StorybookUtils.showNotification('Fullscreen mode disabled.', 'info');
+        }
+    }
+}
+
+function changeTextSize(size) {
+    currentTextSize = size;
+    const textElement = document.getElementById('pageText');
+    
+    // Remove all size classes
+    textElement.classList.remove('text-small', 'text-medium', 'text-large', 'text-xlarge');
+    
+    // Add new size class
+    textElement.classList.add('text-' + size);
+    
+    // Update button states
+    const buttons = document.querySelectorAll('[onclick*="changeTextSize"]');
+    buttons.forEach(function(btn) {
+        btn.classList.remove('active');
+    });
+    
+    // Find and activate the correct button
+    const targetBtn = document.querySelector('[onclick="changeTextSize(\'' + size + '\')"]');
+    if (targetBtn) {
+        targetBtn.classList.add('active');
+    }
+    
+    localStorage.setItem('storybook_textsize', size);
+    if (typeof StorybookUtils !== 'undefined') {
+        StorybookUtils.showNotification('Text size changed to ' + size + '.', 'success');
+    }
+}
+
+function changeMode(mode) {
+    currentMode = mode;
+    const readerCard = document.querySelector('.reader-card');
+    
+    // Remove all mode classes
+    readerCard.classList.remove('focus-mode', 'night-mode');
+    
+    // Add new mode class
+    if (mode !== 'normal') {
+        readerCard.classList.add(mode + '-mode');
+    }
+    
+    // Update button states
+    const buttons = document.querySelectorAll('[onclick*="changeMode"]');
+    buttons.forEach(function(btn) {
+        btn.classList.remove('active');
+    });
+    
+    // Find and activate the correct button
+    const targetBtn = document.querySelector('[onclick="changeMode(\'' + mode + '\')"]');
+    if (targetBtn) {
+        targetBtn.classList.add('active');
+    }
+    
+    localStorage.setItem('storybook_mode', mode);
+    if (typeof StorybookUtils !== 'undefined') {
+        StorybookUtils.showNotification('Reading mode changed to ' + mode + '.', 'success');
+    }
+}
+
+function enlargeImage() {
+    const currentImage = document.getElementById('pageImage');
+    const enlargedImage = document.getElementById('enlargedImage');
+    
+    enlargedImage.src = currentImage.src;
+    
+    const imageModal = new bootstrap.Modal(document.getElementById('imageModal'));
+    imageModal.show();
+}
+
+function loadUserPreferences() {
+    // Load saved page
+    const savedPage = localStorage.getItem('storybook_' + storyData.story_id + '_page');
+    if (savedPage && parseInt(savedPage) !== currentPage) {
+        const shouldResume = confirm('Resume reading from page ' + savedPage + '?');
+        if (shouldResume) {
+            currentPage = parseInt(savedPage);
+            updatePage();
+        }
+    }
+    
+    // Load text size preference
+    const savedTextSize = localStorage.getItem('storybook_textsize');
+    if (savedTextSize) {
+        currentTextSize = savedTextSize;
+        changeTextSize(savedTextSize);
+    }
+    
+    // Load mode preference
+    const savedMode = localStorage.getItem('storybook_mode');
+    if (savedMode) {
+        currentMode = savedMode;
+        changeMode(savedMode);
+    }
+    
+    // Load auto-play preference
+    const savedAutoPlay = localStorage.getItem('storybook_autoplay');
+    if (savedAutoPlay === 'true') {
+        toggleAutoPlay();
+    }
+}
+
+// Complete Story Audio Functions
+function togglePlayAll() {
+    if (isPlayingAll) {
+        stopPlayAll();
+    } else {
+        startPlayAll();
+    }
+}
+
+function startPlayAll() {
+    isPlayingAll = true;
+    currentPlayAllIndex = 0;
+    playAllQueue = [];
+    
+    // Build queue of all audio files
+    for (let i = 0; i < storyData.pages.length; i++) {
+        if (storyData.audio_paths[i]) {
+            playAllQueue.push({
+                pageIndex: i,
+                audioPath: storyData.audio_paths[i]
+            });
+        }
+    }
+    
+    if (playAllQueue.length === 0) {
+        if (typeof StorybookUtils !== 'undefined') {
+            StorybookUtils.showNotification('No audio files available for this story.', 'warning');
+        }
+        return;
+    }
+    
+    // Update UI
+    const playAllBtn = document.getElementById('playAllBtn');
+    const playAllIcon = document.getElementById('playAllIcon');
+    const playAllText = document.getElementById('playAllText');
+    
+    playAllIcon.textContent = '⏸️';
+    playAllText.textContent = 'Stop Full Story';
+    playAllBtn.classList.remove('btn-info');
+    playAllBtn.classList.add('btn-warning');
+    
+    // Start playing from first page
+    goToPage(1);
+    setTimeout(function() {
+        playNextInQueue();
+    }, 500);
+    
+    if (typeof StorybookUtils !== 'undefined') {
+        StorybookUtils.showNotification('Playing complete story! 🎵', 'success');
+    }
+}
+
+function stopPlayAll() {
+    isPlayingAll = false;
+    currentPlayAllIndex = 0;
+    playAllQueue = [];
+    
+    // Stop current audio
+    stopAudio();
+    
+    // Update UI
+    const playAllBtn = document.getElementById('playAllBtn');
+    const playAllIcon = document.getElementById('playAllIcon');
+    const playAllText = document.getElementById('playAllText');
+    
+    playAllIcon.textContent = '🎵';
+    playAllText.textContent = 'Play Full Story';
+    playAllBtn.classList.remove('btn-warning');
+    playAllBtn.classList.add('btn-info');
+    
+    if (typeof StorybookUtils !== 'undefined') {
+        StorybookUtils.showNotification('Stopped full story playback.', 'info');
+    }
+}
+
+function playNextInQueue() {
+    if (!isPlayingAll || currentPlayAllIndex >= playAllQueue.length) {
+        // Finished playing all
+        stopPlayAll();
+        if (typeof StorybookUtils !== 'undefined') {
+            StorybookUtils.showNotification('Complete story finished! 🎉', 'success');
+        }
+        return;
+    }
+    
+    const currentItem = playAllQueue[currentPlayAllIndex];
+    const targetPage = currentItem.pageIndex + 1;
+    
+    // Go to the page
+    if (currentPage !== targetPage) {
+        goToPage(targetPage);
+    }
+    
+    // Play audio for this page
+    setTimeout(function() {
+        toggleAudio();
+    }, 800);
+}
+
+function updateDownloadAudioLink() {
+    const downloadBtn = document.getElementById('downloadAudioBtn');
+    if (downloadBtn && storyData) {
+        downloadBtn.href = '/download-audiobook/' + storyData.story_id;
+        downloadBtn.download = 'audiobook_' + storyData.story_id + '.zip';
+    }
+}
+
+// Enhanced Keyboard Navigation
 document.addEventListener('keydown', function(e) {
     switch(e.key) {
         case 'ArrowLeft':
+            e.preventDefault();
             changePage(-1);
             break;
         case 'ArrowRight':
+            e.preventDefault();
             changePage(1);
             break;
         case ' ':
+            e.preventDefault();
+            toggleAudio();
+            break;
         case 'Enter':
             e.preventDefault();
             toggleAudio();
             break;
+        case 'Escape':
+            if (isFullscreen) {
+                toggleFullscreen();
+            }
+            break;
+        case 'f':
+        case 'F':
+            if (e.ctrlKey) {
+                e.preventDefault();
+                toggleFullscreen();
+            }
+            break;
+        case 'a':
+        case 'A':
+            if (e.ctrlKey) {
+                e.preventDefault();
+                toggleAutoPlay();
+            }
+            break;
     }
 });
+
+// Touch/Swipe Support for Mobile
+let touchStartX = 0;
+let touchEndX = 0;
+
+document.addEventListener('touchstart', function(e) {
+    touchStartX = e.changedTouches[0].screenX;
+});
+
+document.addEventListener('touchend', function(e) {
+    touchEndX = e.changedTouches[0].screenX;
+    handleSwipe();
+});
+
+function handleSwipe() {
+    const swipeThreshold = 50;
+    const diff = touchStartX - touchEndX;
+    
+    if (Math.abs(diff) > swipeThreshold) {
+        if (diff > 0) {
+            // Swipe left - next page
+            changePage(1);
+        } else {
+            // Swipe right - previous page
+            changePage(-1);
+        }
+    }
+}
 </script>
 {% endblock %}

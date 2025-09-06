@@ -2,23 +2,39 @@
 
 // Global utilities
 window.StorybookUtils = {
-    // Show notification
+    // Show notification with enhanced animations
     showNotification: function(message, type = 'info') {
         const notification = document.createElement('div');
-        notification.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
-        notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+        notification.className = `alert alert-${type} alert-dismissible fade show position-fixed notification-slide`;
+        notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 320px; max-width: 400px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.15);';
         notification.innerHTML = `
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            <div class="d-flex align-items-center">
+                <div class="me-2">
+                    ${type === 'success' ? '✅' : type === 'warning' ? '⚠️' : type === 'danger' ? '❌' : 'ℹ️'}
+                </div>
+                <div class="flex-grow-1">${message}</div>
+                <button type="button" class="btn-close ms-2" data-bs-dismiss="alert"></button>
+            </div>
         `;
         document.body.appendChild(notification);
         
-        // Auto-remove after 5 seconds
+        // Add entrance animation
+        setTimeout(() => {
+            notification.style.transform = 'translateX(0)';
+        }, 10);
+        
+        // Auto-remove after 4 seconds with exit animation
         setTimeout(() => {
             if (notification.parentNode) {
-                notification.remove();
+                notification.style.transform = 'translateX(100%)';
+                notification.style.opacity = '0';
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.remove();
+                    }
+                }, 300);
             }
-        }, 5000);
+        }, 4000);
     },
 
     // Add loading class to element
