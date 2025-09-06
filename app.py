@@ -16,7 +16,13 @@ from PIL import Image
 import io
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-here'  # Change this in production
+app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here')  # Use env var in production
+
+# Configure logging for production
+import logging
+if not app.debug:
+    logging.basicConfig(level=logging.INFO)
+    app.logger.setLevel(logging.INFO)
 
 # ----------------------
 # Load API Keys
@@ -145,6 +151,9 @@ def generate_image_freepik(prompt, filename="story.png"):
         print("❌ FREEPIK_API_KEY not found")
         return None
     
+    # Ensure uploads directory exists
+    os.makedirs('uploads', exist_ok=True)
+    
     url = "https://api.freepik.com/v1/ai/text-to-image"
     
     # Enhanced prompt for children's storybook
@@ -178,6 +187,8 @@ def generate_image_freepik(prompt, filename="story.png"):
                             base64_data = base64_data.split(',', 1)[1]
                         
                         image_bytes = base64.b64decode(base64_data)
+                        # Ensure directory exists before writing
+                        os.makedirs(os.path.dirname(filename), exist_ok=True)
                         with open(filename, 'wb') as f:
                             f.write(image_bytes)
                         print(f"✅ Freepik image saved as {filename}")
@@ -191,6 +202,8 @@ def generate_image_freepik(prompt, filename="story.png"):
                     try:
                         img_response = requests.get(image_data['url'], timeout=30)
                         if img_response.status_code == 200:
+                            # Ensure directory exists before writing
+                            os.makedirs(os.path.dirname(filename), exist_ok=True)
                             with open(filename, "wb") as f:
                                 f.write(img_response.content)
                             print(f"✅ Freepik image downloaded as {filename}")
@@ -233,6 +246,9 @@ def generate_image_huggingface(prompt, filename="story.png"):
     """Generate image using Hugging Face Stable Diffusion XL"""
     print("\n🤗 Image Generation via Hugging Face")
     
+    # Ensure uploads directory exists
+    os.makedirs('uploads', exist_ok=True)
+    
     url = f"https://api-inference.huggingface.co/models/{HUGGINGFACE_MODEL}"
     
     payload = {
@@ -249,6 +265,8 @@ def generate_image_huggingface(prompt, filename="story.png"):
         resp = requests.post(url, headers=HUGGINGFACE_HEADERS, json=payload)
         
         if resp.status_code == 200:
+            # Ensure directory exists before writing
+            os.makedirs(os.path.dirname(filename), exist_ok=True)
             with open(filename, "wb") as f:
                 f.write(resp.content)
             print(f"✅ Hugging Face image saved as {filename}")
@@ -341,6 +359,56 @@ def generate_image(story_text, character_desc="", setting_desc="", filename="sto
     print("❌ All image generation methods failed")
     return None
 
+def create_placeholder_image(filepath, page_number, page_text):
+    """Create a simple placeholder image when AI generation fails"""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        
+        # Create a simple colored background
+        img = Image.new('RGB', (1024, 768), color=(240, 248, 255))  # Light blue
+        draw = ImageDraw.Draw(img)
+        
+        # Try to use a default font, fallback to basic if not available
+        try:
+            font_large = ImageFont.truetype("arial.ttf", 48)
+            font_small = ImageFont.truetype("arial.ttf", 24)
+        except:
+            try:
+                font_large = ImageFont.load_default()
+                font_small = ImageFont.load_default()
+            except:
+                font_large = None
+                font_small = None
+        
+        # Draw page number
+        if font_large:
+            draw.text((50, 50), f"Page {page_number}", fill=(70, 130, 180), font=font_large)
+        else:
+            draw.text((50, 50), f"Page {page_number}", fill=(70, 130, 180))
+        
+        # Draw a simple illustration placeholder
+        draw.rectangle([200, 150, 824, 450], outline=(70, 130, 180), width=3)
+        if font_small:
+            draw.text((350, 280), "Story Illustration", fill=(70, 130, 180), font=font_small)
+        else:
+            draw.text((350, 280), "Story Illustration", fill=(70, 130, 180))
+        
+        # Add some decorative elements
+        for i in range(5):
+            x = 100 + i * 150
+            y = 500 + (i % 2) * 50
+            draw.ellipse([x, y, x+30, y+30], fill=(255, 182, 193))  # Light pink circles
+        
+        # Save the image
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        img.save(filepath, 'PNG')
+        print(f"✅ Placeholder image created: {filepath}")
+        return filepath
+        
+    except Exception as e:
+        print(f"❌ Failed to create placeholder image: {e}")
+        return None
+
 def generate_page_image(character_description, page_text, page_number, story_id, setting_description=""):
     """Generate an image for a specific page with enhanced consistency"""
     print(f"\n🖼️ Generating image for page {page_number}")
@@ -376,8 +444,9 @@ def generate_page_image(character_description, page_text, page_number, story_id,
         print(f"✅ Image saved as {filepath}")
         return filepath
     else:
-        print(f"❌ Image generation failed for page {page_number}")
-        return None
+        print(f"❌ Image generation failed for page {page_number}, creating placeholder...")
+        # Create a placeholder image as fallback
+        return create_placeholder_image(filepath, page_number, page_text)
 
 def extract_scene_keywords(text):
     """Extract key scene elements while keeping it concise"""
@@ -428,6 +497,9 @@ def generate_speech_for_page(text, page_number, story_id):
     """Generate speech for a specific page with enhanced voice options"""
     print(f"\n🔊 Generating TTS for page {page_number}")
     
+    # Ensure uploads directory exists
+    os.makedirs('uploads', exist_ok=True)
+    
     filename = f"page_{page_number}_{story_id}.wav"
     filepath = os.path.join("uploads", filename)
     
@@ -465,6 +537,9 @@ def generate_speech_for_page(text, page_number, story_id):
 
 def create_storybook_pdf(story_data, image_paths, story_id):
     """Create enhanced PDF storybook with better formatting"""
+    # Ensure uploads directory exists
+    os.makedirs('uploads', exist_ok=True)
+    
     filename = f"storybook_{story_id}.pdf"
     filepath = os.path.join("uploads", filename)
     
@@ -537,6 +612,13 @@ def create_storybook_pdf(story_data, image_paths, story_id):
                 story.append(Spacer(1, 15))
             except Exception as e:
                 print(f"Could not add image for page {page_num}: {e}")
+                # Add placeholder text when image fails
+                story.append(Paragraph(f"<i>[Image placeholder for page {page_num}]</i>", styles['Italic']))
+                story.append(Spacer(1, 15))
+        else:
+            # Add placeholder when no image is available
+            story.append(Paragraph(f"<i>[Image placeholder for page {page_num}]</i>", styles['Italic']))
+            story.append(Spacer(1, 15))
         
         # Add text with better formatting
         story.append(Paragraph(page['text'], story_style))
@@ -554,9 +636,64 @@ def create_storybook_pdf(story_data, image_paths, story_id):
 def home():
     return render_template('index.html')
 
+@app.route('/health')
+def health_check():
+    """Health check endpoint for monitoring"""
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': time.time(),
+        'uploads_dir_exists': os.path.exists('uploads'),
+        'api_keys_configured': {
+            'openrouter': bool(OPENROUTER_API_KEY),
+            'freepik': bool(FREEPIK_API_KEY),
+            'huggingface': bool(HUGGINGFACEHUB_API_TOKEN),
+            'replicate': bool(REPLICATE_API_TOKEN)
+        }
+    })
+
+@app.route('/test-story')
+def test_story():
+    """Simple test endpoint to verify basic functionality"""
+    try:
+        # Ensure uploads directory exists
+        os.makedirs('uploads', exist_ok=True)
+        
+        # Test basic story generation without external APIs
+        test_story_data = {
+            'title': 'Test Story',
+            'character_description': 'A friendly test character',
+            'setting': 'A test environment',
+            'pages': [
+                {'page': 1, 'text': 'This is a test story to verify the app is working.'},
+                {'page': 2, 'text': 'If you can see this, the basic functionality is operational.'}
+            ],
+            'moral': 'Testing is important!'
+        }
+        
+        story_id = 'test123'
+        
+        # Create a simple test PDF
+        pdf_path = create_storybook_pdf(test_story_data, [], story_id)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Test story created successfully',
+            'story_id': story_id,
+            'pdf_created': os.path.exists(pdf_path) if pdf_path else False
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @app.route('/generate', methods=['POST'])
 def generate_storybook():
     try:
+        # Ensure uploads directory exists at the start
+        os.makedirs('uploads', exist_ok=True)
+        
         prompt = request.form.get('prompt')
         story_length = request.form.get('length', 'normal')  # New: story length option
         
@@ -572,52 +709,92 @@ def generate_storybook():
         
         # Generate images for each page with enhanced consistency
         image_paths = []
+        successful_images = 0
         for page in story_data['pages']:
-            image_path = generate_page_image(
-                story_data['character_description'],
-                page['text'],
-                page['page'],
-                story_id,
-                story_data.get('setting', '')
-            )
-            image_paths.append(image_path)
+            try:
+                image_path = generate_page_image(
+                    story_data['character_description'],
+                    page['text'],
+                    page['page'],
+                    story_id,
+                    story_data.get('setting', '')
+                )
+                image_paths.append(image_path)
+                if image_path:
+                    successful_images += 1
+            except Exception as e:
+                print(f"❌ Error generating image for page {page['page']}: {e}")
+                image_paths.append(None)
+        
+        print(f"📊 Generated {successful_images}/{len(story_data['pages'])} images successfully")
         
         # Generate speech for each page
         audio_paths = []
+        successful_audio = 0
         for page in story_data['pages']:
-            audio_path = generate_speech_for_page(
-                page['text'],
-                page['page'],
-                story_id
-            )
-            audio_paths.append(audio_path)
+            try:
+                audio_path = generate_speech_for_page(
+                    page['text'],
+                    page['page'],
+                    story_id
+                )
+                audio_paths.append(audio_path)
+                if audio_path:
+                    successful_audio += 1
+            except Exception as e:
+                print(f"❌ Error generating audio for page {page['page']}: {e}")
+                audio_paths.append(None)
         
-        # Create enhanced PDF
-        pdf_path = create_storybook_pdf(story_data, image_paths, story_id)
+        print(f"🔊 Generated {successful_audio}/{len(story_data['pages'])} audio files successfully")
+        
+        # Create enhanced PDF (this should work even without images)
+        try:
+            pdf_path = create_storybook_pdf(story_data, image_paths, story_id)
+        except Exception as e:
+            print(f"❌ Error creating PDF: {e}")
+            pdf_path = None
         
         # Store story data for viewing
         story_file = os.path.join("uploads", f"story_data_{story_id}.json")
-        with open(story_file, 'w') as f:
-            json.dump({
-                'story_data': story_data,
-                'image_paths': image_paths,
-                'audio_paths': audio_paths,
-                'pdf_path': pdf_path,
-                'story_length': story_length
-            }, f)
+        try:
+            with open(story_file, 'w') as f:
+                json.dump({
+                    'story_data': story_data,
+                    'image_paths': image_paths,
+                    'audio_paths': audio_paths,
+                    'pdf_path': pdf_path,
+                    'story_length': story_length
+                }, f)
+        except Exception as e:
+            print(f"❌ Error saving story data: {e}")
         
-        return jsonify({
+        # Return success even if some components failed
+        response_data = {
             'success': True,
             'story_id': story_id,
-            'pdf_url': f'/download-pdf/{story_id}',
-            'audiobook_url': f'/download-audiobook/{story_id}',
-            'reader_url': f'/reader/{story_id}',
-            'story_data': story_data  # Include story data for immediate display
-        })
+            'story_data': story_data,
+            'stats': {
+                'images_generated': successful_images,
+                'audio_generated': successful_audio,
+                'total_pages': len(story_data['pages'])
+            }
+        }
+        
+        if pdf_path:
+            response_data['pdf_url'] = f'/download-pdf/{story_id}'
+        
+        if successful_audio > 0:
+            response_data['audiobook_url'] = f'/download-audiobook/{story_id}'
+        
+        response_data['reader_url'] = f'/reader/{story_id}'
+        
+        return jsonify(response_data)
         
     except Exception as e:
         print(f"❌ Error generating story: {e}")
-        return jsonify({'error': str(e)}), 500
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Story generation failed: {str(e)}'}), 500
 
 # Keep all existing download routes...
 @app.route('/download/<filename>')
@@ -756,4 +933,12 @@ if __name__ == '__main__':
     print("✅ Enhanced PDF generation")
     print("✅ Improved reader interface")
     print("✅ Better error handling")
-    app.run(debug=True, host='127.0.0.1', port=5000)
+    print("✅ Graceful fallbacks for failed generations")
+    
+    # Use environment port for production (Render) or default to 5000
+    port = int(os.environ.get('PORT', 5000))
+    host = '0.0.0.0'  # Allow external connections in production
+    debug = os.environ.get('FLASK_ENV') != 'production'
+    
+    print(f"🌐 Starting server on {host}:{port}")
+    app.run(debug=debug, host=host, port=port)

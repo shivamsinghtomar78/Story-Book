@@ -161,6 +161,28 @@ IMAGE_MODEL_VERSION = "black-forest-labs/flux-dev"
 
 ## 🐛 Troubleshooting
 
+### Production Deployment Issues (Fixed)
+
+The following issues have been resolved in the latest version:
+
+1. **"No such file or directory" errors** ✅ FIXED
+   - App now automatically creates the `uploads` directory
+   - Enhanced file path handling with proper directory creation
+   - Graceful fallbacks when file operations fail
+
+2. **Image generation failures** ✅ FIXED
+   - Added multiple image generation providers (Freepik → Hugging Face → Replicate)
+   - Placeholder images created when all AI services fail
+   - PDF generation continues even without images
+
+3. **Missing gTTS dependency** ✅ FIXED
+   - Added `gtts==2.5.1` to requirements.txt
+   - Fallback TTS system for when primary TTS fails
+
+4. **Port binding issues on Render** ✅ FIXED
+   - App now uses PORT environment variable
+   - Proper host binding for production deployment
+
 ### Common Issues
 
 1. **API Keys not working**
@@ -169,19 +191,24 @@ IMAGE_MODEL_VERSION = "black-forest-labs/flux-dev"
    - Ensure no extra spaces in the `.env` file
 
 2. **Images not generating**
-   - Check Replicate API credits
+   - The app now has multiple fallbacks and will create placeholder images
+   - Check API credits for Freepik, Hugging Face, or Replicate
    - Verify internet connection
-   - Try with a simpler prompt
 
 3. **Audio not playing**
+   - App now falls back to gTTS if primary TTS fails
    - Check OpenRouter TTS credits
    - Verify browser audio permissions
-   - Try refreshing the reader page
 
 4. **PDF not downloading**
+   - PDF generation now works even without images (uses placeholders)
    - Check file permissions in uploads directory
    - Verify all dependencies are installed
-   - Check browser download settings
+
+### Health Check Endpoints
+
+- `/health` - Check app status and API configuration
+- `/test-story` - Test basic functionality without external APIs
 
 ## 📈 Performance Tips
 
