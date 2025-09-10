@@ -14,66 +14,46 @@ from reportlab.lib.units import inch
 from reportlab.lib import colors
 from PIL import Image
 import io
+from gtts import gTTS
+import logging
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here')  # Use env var in production
+app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here')
 
-# Configure logging for production
-import logging
+def tojson_filter(value):
+    return json.dumps(value, default=str)
+
+app.jinja_env.filters['tojson'] = tojson_filter
+app.jinja_env.add_extension('jinja2.ext.do')
+
 if not app.debug:
     logging.basicConfig(level=logging.INFO)
     app.logger.setLevel(logging.INFO)
 
-# ----------------------
-# Load API Keys
-# ----------------------
-
 load_dotenv()
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN")
-HUGGINGFACEHUB_API_TOKEN = os.getenv("HUGGINGFACEHUB_API_TOKEN")
-FREEPIK_API_KEY = os.getenv("FREEPIK_API_KEY")  # Added Freepik API key
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")  
+FREEPIK_API_KEY = os.getenv("FREEPIK_API_KEY")  
 
-# API key warnings
+
 if not OPENROUTER_API_KEY:
     print("Warning: OPENROUTER_API_KEY missing in .env")
-if not REPLICATE_API_TOKEN:
-    print("Warning: REPLICATE_API_TOKEN missing in .env")
-if not HUGGINGFACEHUB_API_TOKEN:
-    print("Warning: HUGGINGFACEHUB_API_TOKEN missing in .env")
 if not FREEPIK_API_KEY:
     print("Warning: FREEPIK_API_KEY missing in .env")
 
-# ----------------------
-# API Configuration
-# ----------------------
-
 OPENROUTER_HEADERS = {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"}
 TEXT_MODEL = "meta-llama/llama-4-maverick:free"
-TTS_MODEL = "neversleep/night-tts"
 
-REPLICATE_HEADERS = {"Authorization": f"Token {REPLICATE_API_TOKEN}"}
-IMAGE_MODEL_VERSION = "black-forest-labs/flux-dev"
 
-# Hugging Face configuration
-HUGGINGFACE_HEADERS = {"Authorization": f"Bearer {HUGGINGFACEHUB_API_TOKEN}"}
-HUGGINGFACE_MODEL = "stabilityai/stable-diffusion-xl-base-1.0"
-
-# Freepik API configuration
 FREEPIK_HEADERS = {
     "x-freepik-api-key": FREEPIK_API_KEY,
     "Content-Type": "application/json"
 }
 
-# ----------------------
-# Enhanced Story Generation Functions
-# ----------------------
-
 def generate_story_pages(prompt, story_length="normal"):
     """Generate a children's story with enhanced length options"""
     url = "https://openrouter.ai/api/v1/chat/completions"
     
-    # Determine story specifications based on length
+    
     length_specs = {
         "short": {"pages": 3, "sentences": "1-2 sentences per page", "description": "Very short story for toddlers"},
         "normal": {"pages": 5, "sentences": "2-3 sentences per page", "description": "Standard children's story"},
@@ -118,108 +98,138 @@ def generate_story_pages(prompt, story_length="normal"):
         ]
     }
     
-    resp = requests.post(url, headers=OPENROUTER_HEADERS, json=data)
-    if resp.status_code == 200:
-        try:
-            content = resp.json()["choices"][0]["message"]["content"]
-            # Try to extract JSON from the response if it's embedded in text
-            if content.strip().startswith('{'):
-                story_data = json.loads(content)
-            else:
-                # Look for JSON within the text
-                import re
-                json_match = re.search(r'\{.*\}', content, re.DOTALL)
-                if json_match:
-                    story_data = json.loads(json_match.group())
+    try:
+        resp = requests.post(url, headers=OPENROUTER_HEADERS, json=data, timeout=30)
+        if resp.status_code == 200:
+            try:
+                content = resp.json()["choices"][0]["message"]["content"]
+                
+                if content.strip().startswith('{'):
+                    story_data = json.loads(content)
                 else:
-                    raise RuntimeError("No valid JSON found in response")
-            return story_data
-        except json.JSONDecodeError as e:
-            raise RuntimeError(f"Failed to parse story JSON response: {e}\nContent: {content}")
-    else:
-        raise RuntimeError(f"Story generation failed: {resp.text}")
+                    # Try to find JSON in the response
+                    import re
+                    json_match = re.search(r'\{.*\}', content, re.DOTALL)
+                    if json_match:
+                        story_data = json.loads(json_match.group())
+                    else:
+                        print(f"Error: No valid JSON found in response. Content: {content}")
+                        raise RuntimeError("No valid JSON found in response")
+                
+                # Validate story data structure
+                required_fields = ['title', 'character_description', 'setting', 'pages', 'moral']
+                missing_fields = [field for field in required_fields if field not in story_data]
+                if missing_fields:
+                    raise RuntimeError(f"Missing required fields in story data: {', '.join(missing_fields)}")
+                
+                # Validate pages structure
+                if not isinstance(story_data['pages'], list) or len(story_data['pages']) != spec['pages']:
+                    raise RuntimeError(f"Invalid pages data. Expected {spec['pages']} pages.")
+                
+                return story_data
+            except json.JSONDecodeError as e:
+                print(f"Error parsing story JSON: {e}\nContent: {content}")
+                raise RuntimeError(f"Failed to parse story JSON response: {e}")
+            except KeyError as e:
+                print(f"Error accessing response data: {e}\nResponse: {resp.json()}")
+                raise RuntimeError(f"Invalid response structure: {e}")
+        else:
+            print(f"Error from API: Status {resp.status_code}\nResponse: {resp.text}")
+            raise RuntimeError(f"Story generation failed: {resp.text}")
+    except requests.RequestException as e:
+        print(f"Network error during story generation: {e}")
+        raise RuntimeError(f"Network error during story generation: {e}")
 
-# ----------------------
-# Enhanced Image Generation Functions
-# ----------------------
+ 
 
 def generate_image_freepik(prompt, filename="story.png"):
     """Generate image using Freepik API - Primary method"""
-    print("\n🎨 Image Generation via Freepik API")
+    print("\n Image Generation via Freepik API")
     
     if not FREEPIK_API_KEY:
-        print("❌ FREEPIK_API_KEY not found")
+        print(" FREEPIK_API_KEY not found")
         return None
     
-    # Ensure uploads directory exists
-    os.makedirs('uploads', exist_ok=True)
+    # Validate and sanitize filename
+    try:
+        safe_filename = secure_filename(os.path.basename(filename))
+        filepath = os.path.join('uploads', safe_filename)
+        os.makedirs('uploads', exist_ok=True)
+    except Exception as e:
+        print(f" Error preparing file path: {e}")
+        return None
     
     url = "https://api.freepik.com/v1/ai/text-to-image"
     
-    # Enhanced prompt for children's storybook
-    enhanced_prompt = f"High-quality children's storybook illustration: {prompt}. Whimsical, colorful, cartoon style, bright vibrant colors, fairy tale atmosphere, professional digital art, detailed, beautiful lighting, suitable for children aged 3-8"
+    # Enhanced prompt for children's storybook with length limit
+    prompt_text = f"High-quality children's storybook illustration: {prompt}. Whimsical, colorful, cartoon style, bright vibrant colors, fairy tale atmosphere, professional digital art, detailed, beautiful lighting, suitable for children aged 3-8"
+    if len(prompt_text) > 500:  # Freepik's max prompt length
+        prompt_text = prompt_text[:497] + "..."
     
     payload = {
-        "prompt": enhanced_prompt,
+        "prompt": prompt_text,
         "num_images": 1,
         "image": {
-            "size": "landscape_4_3"  # Perfect for storybook pages
+            "size": "landscape_4_3"
         }
     }
     
     try:
-        print(f"📤 Sending request to Freepik API...")
+        print(" Sending request to Freepik API...")
         response = requests.post(url, headers=FREEPIK_HEADERS, json=payload, timeout=60)
         
-        print(f"📥 Response status: {response.status_code}")
+        print(f" Response status: {response.status_code}")
         
         if response.status_code == 200:
-            result = response.json()
-            
-            if 'data' in result and result['data']:
-                image_data = result['data'][0]
+            try:
+                result = response.json()
+            except json.JSONDecodeError as e:
+                print(f" Error parsing JSON response: {e}")
+                return None
                 
-                # Handle base64 encoded image
-                if 'base64' in image_data:
-                    try:
-                        base64_data = image_data['base64']
-                        if base64_data.startswith('data:image'):
-                            base64_data = base64_data.split(',', 1)[1]
-                        
-                        image_bytes = base64.b64decode(base64_data)
+            if not result.get('data'):
+                print(" No image data in response")
+                return None
+                
+            image_data = result['data'][0]
+            
+            if 'base64' in image_data:
+                try:
+                    base64_data = image_data['base64']
+                    if base64_data.startswith('data:image'):
+                        base64_data = base64_data.split(',', 1)[1]
+                    
+                    image_bytes = base64.b64decode(base64_data)
+                    
+                    os.makedirs(os.path.dirname(filename), exist_ok=True)
+                    with open(filename, 'wb') as f:
+                        f.write(image_bytes)
+                    print(f"✅ Freepik image saved as {filename}")
+                    return filename
+                except Exception as e:
+                    print(f" Failed to decode base64 image: {e}")
+                    return None
+            
+            # Handle URL-based image
+            elif 'url' in image_data:
+                try:
+                    img_response = requests.get(image_data['url'], timeout=30)
+                    if img_response.status_code == 200:
                         # Ensure directory exists before writing
                         os.makedirs(os.path.dirname(filename), exist_ok=True)
-                        with open(filename, 'wb') as f:
-                            f.write(image_bytes)
-                        print(f"✅ Freepik image saved as {filename}")
+                        with open(filename, "wb") as f:
+                            f.write(img_response.content)
+                        print(f"✅ Freepik image downloaded as {filename}")
                         return filename
-                    except Exception as e:
-                        print(f"❌ Failed to decode base64 image: {e}")
+                    else:
+                        print(f"❌ Failed to download image: {img_response.status_code}")
                         return None
-                
-                # Handle URL-based image
-                elif 'url' in image_data:
-                    try:
-                        img_response = requests.get(image_data['url'], timeout=30)
-                        if img_response.status_code == 200:
-                            # Ensure directory exists before writing
-                            os.makedirs(os.path.dirname(filename), exist_ok=True)
-                            with open(filename, "wb") as f:
-                                f.write(img_response.content)
-                            print(f"✅ Freepik image downloaded as {filename}")
-                            return filename
-                        else:
-                            print(f"❌ Failed to download image: {img_response.status_code}")
-                            return None
-                    except Exception as e:
-                        print(f"❌ Error downloading image: {e}")
-                        return None
-                
-                else:
-                    print("❌ No recognizable image data in response")
+                except Exception as e:
+                    print(f"❌ Error downloading image: {e}")
                     return None
+            
             else:
-                print("❌ No image data in Freepik response")
+                print("❌ No recognizable image data in response")
                 return None
                 
         elif response.status_code == 401:
@@ -239,95 +249,96 @@ def generate_image_freepik(prompt, filename="story.png"):
         print("❌ Freepik API timeout")
         return None
     except Exception as e:
-        print(f"❌ Freepik API error: {e}")
+        print(f"❌ Freepik API error: {str(e)}")
+        return None
+        print(f" Freepik API error: {e}")
         return None
 
-def generate_image_huggingface(prompt, filename="story.png"):
-    """Generate image using Hugging Face Stable Diffusion XL"""
-    print("\n🤗 Image Generation via Hugging Face")
+# def generate_image_huggingface(prompt, filename="story.png"):
+#     """Generate image using Hugging Face Stable Diffusion XL"""
+#     print("\n Image Generation via Hugging Face")
     
-    # Ensure uploads directory exists
-    os.makedirs('uploads', exist_ok=True)
+#     # Ensure uploads directory exists
+#     os.makedirs('uploads', exist_ok=True)
     
-    url = f"https://api-inference.huggingface.co/models/{HUGGINGFACE_MODEL}"
+#     url = f"https://api-inference.huggingface.co/models/{HUGGINGFACE_MODEL}"
     
-    payload = {
-        "inputs": prompt,
-        "parameters": {
-            "num_inference_steps": 30,
-            "guidance_scale": 7.5,
-            "width": 1024,
-            "height": 768
-        }
-    }
+#     payload = {
+#         "inputs": prompt,
+#         "parameters": {
+#             "num_inference_steps": 30,
+#             "guidance_scale": 7.5,
+#             "width": 1024,
+#             "height": 768
+#         }
+#     }
     
-    try:
-        resp = requests.post(url, headers=HUGGINGFACE_HEADERS, json=payload)
+#     try:
+#         resp = requests.post(url, headers=HUGGINGFACE_HEADERS, json=payload)
         
-        if resp.status_code == 200:
-            # Ensure directory exists before writing
-            os.makedirs(os.path.dirname(filename), exist_ok=True)
-            with open(filename, "wb") as f:
-                f.write(resp.content)
-            print(f"✅ Hugging Face image saved as {filename}")
-            return filename
-        else:
-            print(f"❌ Hugging Face failed: {resp.status_code}")
-            return None
+#         if resp.status_code == 200:
+#             # Ensure directory exists before writing
+#             os.makedirs(os.path.dirname(filename), exist_ok=True)
+#             with open(filename, "wb") as f:
+#                 f.write(resp.content)
+#             print(f"✅ Hugging Face image saved as {filename}")
+#             return filename
+#         else:
+#             print(f"❌ Hugging Face failed: {resp.status_code}")
+#             return None
             
-    except Exception as e:
-        print(f"❌ Hugging Face error: {e}")
-        return None
+#     except Exception as e:
+#         print(f"❌ Hugging Face error: {e}")
+#         return None
 
-def generate_image_replicate(prompt, filename="story.png"):
-    """Generate image using Replicate as fallback"""
-    print("\n🔄 Image Generation via Replicate")
+# def generate_image_replicate(prompt, filename="story.png"):
+#     """Generate image using Replicate as fallback"""
+#     print("\n🔄 Image Generation via Replicate")
     
-    url = f"https://api.replicate.com/v1/models/{IMAGE_MODEL_VERSION}/predictions"
-    payload = {
-        "input": {
-            "prompt": prompt,
-            "width": 1024,
-            "height": 768,
-            "num_inference_steps": 28,
-            "guidance_scale": 3.5
-        }
-    }
+#     url = f"https://api.replicate.com/v1/models/{IMAGE_MODEL_VERSION}/predictions"
+#     payload = {
+#         "input": {
+#             "prompt": prompt,
+#             "width": 1024,
+#             "height": 768,
+#             "num_inference_steps": 28,
+#             "guidance_scale": 3.5
+#         }
+#     }
     
-    try:
-        resp = requests.post(url, headers=REPLICATE_HEADERS, json=payload)
-        if resp.status_code in [200, 201]:
-            prediction = resp.json()
-            print(f"Started prediction: {prediction['id']}")
+#     try:
+#         resp = requests.post(url, headers=REPLICATE_HEADERS, json=payload)
+#         if resp.status_code in [200, 201]:
+#             prediction = resp.json()
+#             print(f"Started prediction: {prediction['id']}")
             
-            # Poll until prediction is complete
-            while prediction["status"] not in ["succeeded", "failed", "canceled"]:
-                print(f"Status: {prediction['status']}...")
-                time.sleep(3)
-                check_url = f"https://api.replicate.com/v1/predictions/{prediction['id']}"
-                prediction = requests.get(check_url, headers=REPLICATE_HEADERS).json()
+#             # Poll until prediction is complete
+#             while prediction["status"] not in ["succeeded", "failed", "canceled"]:
+#                 print(f"Status: {prediction['status']}...")
+#                 time.sleep(3)
+#                 check_url = f"https://api.replicate.com/v1/predictions/{prediction['id']}"
+#                 prediction = requests.get(check_url, headers=REPLICATE_HEADERS).json()
 
-            if prediction["status"] == "succeeded":
-                image_url = prediction["output"][0] if isinstance(prediction["output"], list) else prediction["output"]
-                image_data = requests.get(image_url).content
-                with open(filename, "wb") as f:
-                    f.write(image_data)
-                print(f"✅ Replicate image saved as {filename}")
-                return filename
-            else:
-                print("❌ Replicate generation failed")
-                return None
-        else:
-            print("❌ Failed to start Replicate generation")
-            return None
-    except Exception as e:
-        print(f"❌ Replicate error: {e}")
-        return None
+#             if prediction["status"] == "succeeded":
+#                 image_url = prediction["output"][0] if isinstance(prediction["output"], list) else prediction["output"]
+#                 image_data = requests.get(image_url).content
+#                 with open(filename, "wb") as f:
+#                     f.write(image_data)
+#                 print(f"✅ Replicate image saved as {filename}")
+#                 return filename
+#             else:
+#                 print("❌ Replicate generation failed")
+#                 return None
+#         else:
+#             print("❌ Failed to start Replicate generation")
+#             return None
+#     except Exception as e:
+#         print(f"❌ Replicate error: {e}")
+#         return None
 
 def generate_image(story_text, character_desc="", setting_desc="", filename="story.png"):
-    """Enhanced image generation with Freepik as primary, multiple fallbacks"""
-    
-    # Create enhanced prompt with character and setting consistency
+    """Generate image using Freepik API"""
+     
     base_prompt = f"Children's storybook illustration: {story_text}"
     if character_desc:
         base_prompt += f" Character: {character_desc}"
@@ -336,39 +347,27 @@ def generate_image(story_text, character_desc="", setting_desc="", filename="sto
     
     image_prompt = f"{base_prompt}. Whimsical, colorful, cartoon style, fairy tale atmosphere, beautiful lighting, suitable for children"
     
-    print(f"\n🎨 Starting image generation...")
+    print(f"\n Starting image generation...")
+    print("Using Freepik API for image generation...")
     
-    # Try Freepik first (best quality for storybooks)
-    print("Trying Freepik API (Primary - High Quality)...")
-    freepik_result = generate_image_freepik(image_prompt, filename)
-    if freepik_result:
-        return freepik_result
     
-    # Fallback to Hugging Face
-    print("Freepik failed, trying Hugging Face...")
-    hf_result = generate_image_huggingface(image_prompt, filename)
-    if hf_result:
-        return hf_result
+    result = generate_image_freepik(image_prompt, filename)
+    if result:
+        return result
     
-    # Final fallback to Replicate
-    print("Hugging Face failed, trying Replicate...")
-    replicate_result = generate_image_replicate(image_prompt, filename)
-    if replicate_result:
-        return replicate_result
-    
-    print("❌ All image generation methods failed")
-    return None
+    print(" Image generation failed")
+    return create_placeholder_image(filename, 1, story_text)
 
 def create_placeholder_image(filepath, page_number, page_text):
     """Create a simple placeholder image when AI generation fails"""
     try:
         from PIL import Image, ImageDraw, ImageFont
         
-        # Create a simple colored background
+         
         img = Image.new('RGB', (1024, 768), color=(240, 248, 255))  # Light blue
         draw = ImageDraw.Draw(img)
         
-        # Try to use a default font, fallback to basic if not available
+        
         try:
             font_large = ImageFont.truetype("arial.ttf", 48)
             font_small = ImageFont.truetype("arial.ttf", 24)
@@ -380,60 +379,61 @@ def create_placeholder_image(filepath, page_number, page_text):
                 font_large = None
                 font_small = None
         
-        # Draw page number
+        
         if font_large:
             draw.text((50, 50), f"Page {page_number}", fill=(70, 130, 180), font=font_large)
         else:
             draw.text((50, 50), f"Page {page_number}", fill=(70, 130, 180))
         
-        # Draw a simple illustration placeholder
+        
         draw.rectangle([200, 150, 824, 450], outline=(70, 130, 180), width=3)
         if font_small:
             draw.text((350, 280), "Story Illustration", fill=(70, 130, 180), font=font_small)
         else:
             draw.text((350, 280), "Story Illustration", fill=(70, 130, 180))
         
-        # Add some decorative elements
+         
         for i in range(5):
             x = 100 + i * 150
             y = 500 + (i % 2) * 50
             draw.ellipse([x, y, x+30, y+30], fill=(255, 182, 193))  # Light pink circles
         
-        # Save the image
+        
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
         img.save(filepath, 'PNG')
-        print(f"✅ Placeholder image created: {filepath}")
+        print(f" Placeholder image created: {filepath}")
         return filepath
         
     except Exception as e:
-        print(f"❌ Failed to create placeholder image: {e}")
+        print(f" Failed to create placeholder image: {e}")
         return None
 
 def generate_page_image(character_description, page_text, page_number, story_id, setting_description=""):
     """Generate an image for a specific page with enhanced consistency"""
-    print(f"\n🖼️ Generating image for page {page_number}")
+    print(f"\n Generating image for page {page_number}")
     
     filename = f"page_{page_number}_{story_id}.png"
     filepath = os.path.join("uploads", filename)
     
-    # Create a more focused prompt that maintains character consistency
-    # Extract key action/scene from page text while keeping character context
     scene_keywords = extract_scene_keywords(page_text)
     
     # Build enhanced prompt with character consistency
-    enhanced_prompt = f"Children's storybook illustration showing {character_description}"
+    enhanced_prompt = f"""High-quality children's storybook illustration for the scene:
     
-    if scene_keywords:
-        enhanced_prompt += f" in this scene: {scene_keywords}"
-    else:
-        # Fallback to first 100 characters of page text
-        scene_desc = page_text[:100] + "..." if len(page_text) > 100 else page_text
-        enhanced_prompt += f" in this scene: {scene_desc}"
+    Characters: {character_description}
+    Setting: {setting_description}
+    Scene: {scene_keywords if scene_keywords else page_text[:100]}
     
-    if setting_description:
-        enhanced_prompt += f". Setting: {setting_description}"
-    
-    enhanced_prompt += ". Consistent character design, whimsical cartoon style, bright colors, child-friendly"
+    Style requirements:
+    - Whimsical, Disney/Pixar-inspired cartoon style
+    - Rich, vibrant colors with proper lighting and shadows
+    - Clear, detailed character expressions and poses
+    - Well-defined foreground and background elements
+    - Child-friendly, engaging composition
+    - Professional digital art quality
+    - Consistent character design across pages
+    - Clear focal point with good visual hierarchy
+    - Soft, warm lighting for a cozy atmosphere"""
     
     print(f"📝 Enhanced prompt: {enhanced_prompt}")
     
@@ -441,41 +441,90 @@ def generate_page_image(character_description, page_text, page_number, story_id,
     result = generate_image(enhanced_prompt, "", "", filepath)
     
     if result:
-        print(f"✅ Image saved as {filepath}")
+        print(f" Image saved as {filepath}")
         return filepath
     else:
-        print(f"❌ Image generation failed for page {page_number}, creating placeholder...")
+        print(f" Image generation failed for page {page_number}, creating placeholder...")
         # Create a placeholder image as fallback
         return create_placeholder_image(filepath, page_number, page_text)
 
 def extract_scene_keywords(text):
-    """Extract key scene elements while keeping it concise"""
+    """Extract key scene elements with enhanced context awareness"""
     import re
     
-    # Remove common story words that don't help with image generation
-    stop_words = {'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'a', 'an'}
+    # Expanded word sets for better scene understanding
+    stop_words = {'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'a', 'an', 
+                 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had'}
     
-    # Extract action words and important nouns
+    action_words = {
+        'run', 'walk', 'jump', 'fly', 'swim', 'dance', 'sing', 'play', 'laugh', 'smile', 'cry', 'sleep',
+        'eat', 'drink', 'climb', 'fall', 'sit', 'stand', 'look', 'see', 'find', 'meet', 'help', 'save',
+        'fight', 'hide', 'explore', 'discover', 'build', 'create', 'magic', 'adventure', 'chase', 'search',
+        'whisper', 'shout', 'giggle', 'dream', 'imagine', 'wonder', 'think', 'wish'
+    }
+    
+    object_words = {
+        'tree', 'flower', 'house', 'castle', 'forest', 'mountain', 'river', 'ocean', 'garden', 'bridge',
+        'door', 'window', 'book', 'treasure', 'crown', 'sword', 'wand', 'star', 'moon', 'sun', 'cloud',
+        'rainbow', 'path', 'road', 'street', 'shop', 'school', 'park', 'playground', 'beach', 'cave',
+        'island', 'ship', 'boat', 'train', 'car', 'bicycle', 'balloon', 'kite', 'toy', 'pet'
+    }
+    
+    emotion_words = {
+        'happy', 'sad', 'excited', 'scared', 'brave', 'worried', 'curious', 'proud', 'friendly',
+        'lonely', 'angry', 'peaceful', 'silly', 'surprised', 'confused', 'determined'
+    }
+    
+    # Extract all words and keep their original order
     words = re.findall(r'\b\w+\b', text.lower())
     
-    # Keep important scene elements (actions, objects, emotions)
-    important_words = []
-    action_words = {'run', 'walk', 'jump', 'fly', 'swim', 'dance', 'sing', 'play', 'laugh', 'smile', 'cry', 'sleep', 'eat', 'drink', 'climb', 'fall', 'sit', 'stand', 'look', 'see', 'find', 'meet', 'help', 'save', 'fight', 'hide', 'explore', 'discover', 'build', 'create', 'magic', 'adventure'}
-    object_words = {'tree', 'flower', 'house', 'castle', 'forest', 'mountain', 'river', 'ocean', 'garden', 'bridge', 'door', 'window', 'book', 'treasure', 'crown', 'sword', 'wand', 'star', 'moon', 'sun', 'cloud', 'rainbow'}
-    
+    # Process words with context awareness
+    scene_elements = []
     for word in words:
         if word not in stop_words and len(word) > 2:
-            if word in action_words or word in object_words or word.endswith('ing') or word.endswith('ed'):
-                important_words.append(word)
+            # Prioritize words based on their category
+            if word in emotion_words:
+                scene_elements.insert(0, word)  # Emotions get high priority
+            elif word in action_words or word.endswith('ing'):
+                scene_elements.append(word)
+            elif word in object_words:
+                scene_elements.append(word)
+            elif word.endswith('ly'):  # Adverbs for action description
+                scene_elements.append(word)
     
-    # Limit to most important words to keep prompt focused
-    scene_desc = ' '.join(important_words[:8])
+    # Build scene description with context markers
+    scene_desc = []
+    emotions = [w for w in scene_elements if w in emotion_words]
+    actions = [w for w in scene_elements if w in action_words or w.endswith('ing')]
+    objects = [w for w in scene_elements if w in object_words]
     
-    return scene_desc if scene_desc else None
+    # Construct a more natural scene description
+    if emotions:
+        scene_desc.append(f"feeling {emotions[0]}")
+    if actions:
+        scene_desc.append(actions[0])
+    if objects:
+        scene_desc.extend(objects[:2])
+    
+    # Add remaining important words
+    remaining_words = [w for w in scene_elements if w not in (emotions + actions + objects)]
+    scene_desc.extend(remaining_words[:3])
+    
+    final_desc = ' '.join(scene_desc)
+    
+    # Add scene type hints
+    if any(word in final_desc for word in ['run', 'jump', 'chase', 'dance']):
+        final_desc += ", dynamic action scene"
+    elif any(word in emotion_words for word in words):
+        final_desc += ", emotional moment"
+    elif any(word in ['forest', 'garden', 'beach', 'mountain'] for word in words):
+        final_desc += ", nature scene"
+    elif any(word in ['castle', 'house', 'shop', 'school'] for word in words):
+        final_desc += ", architectural setting"
+    
+    return final_desc if final_desc else None
 
-# ----------------------
-# Enhanced TTS Functions
-# ----------------------
+ 
 
 def try_fallback_tts(text, filename):
     """Enhanced fallback TTS with multiple options"""
@@ -484,56 +533,34 @@ def try_fallback_tts(text, filename):
         from gtts import gTTS
         tts = gTTS(text=text, lang='en', slow=False)
         tts.save(filename)
-        print(f"✅ Fallback speech saved as {filename}")
+        print(f" Fallback speech saved as {filename}")
         return filename
     except ImportError:
-        print("❌ gTTS not installed. Install with: pip install gtts")
+        print("gTTS not installed. Install with: pip install gtts")
         return None
     except Exception as e:
-        print(f"❌ Fallback TTS also failed: {e}")
+        print(f" Fallback TTS also failed: {e}")
         return None
 
 def generate_speech_for_page(text, page_number, story_id):
-    """Generate speech for a specific page with enhanced voice options"""
-    print(f"\n🔊 Generating TTS for page {page_number}")
+    """Generate speech for a specific page using gTTS"""
+    print(f"\n Generating TTS for page {page_number}")
     
     # Ensure uploads directory exists
     os.makedirs('uploads', exist_ok=True)
     
-    filename = f"page_{page_number}_{story_id}.wav"
+    filename = f"page_{page_number}_{story_id}.mp3"
     filepath = os.path.join("uploads", filename)
     
-    # Try primary TTS method first (OpenRouter)
-    url = "https://openrouter.ai/api/v1/audio/speech"
-    data = {
-        "model": TTS_MODEL,
-        "input": text,
-        "voice": "af_bella"  # Child-friendly voice
-    }
-    
-    resp = requests.post(url, headers=OPENROUTER_HEADERS, json=data)
-    if resp.status_code == 200:
-        with open(filepath, "wb") as f:
-            f.write(resp.content)
-        print(f"✅ Primary TTS speech saved as {filepath}")
+    try:
+        # Generate speech using gTTS
+        tts = gTTS(text=text, lang='en', slow=False)
+        tts.save(filepath)
+        print(f" TTS audio saved as {filepath}")
         return filepath
-    else:
-        print(f"❌ Primary TTS failed: {resp.text}")
-        
-        # Try fallback TTS (gTTS)
-        fallback_filename = f"page_{page_number}_{story_id}.mp3"
-        fallback_filepath = os.path.join("uploads", fallback_filename)
-        
-        result = try_fallback_tts(text, fallback_filepath)
-        if result:
-            return fallback_filepath
-        else:
-            print(f"❌ All TTS methods failed for page {page_number}")
-            return None
-
-# ----------------------
-# Enhanced PDF Creation
-# ----------------------
+    except Exception as e:
+        print(f"❌ Error generating audio: {e}")
+        return None
 
 def create_storybook_pdf(story_data, image_paths, story_id):
     """Create enhanced PDF storybook with better formatting"""
@@ -628,9 +655,7 @@ def create_storybook_pdf(story_data, image_paths, story_id):
     print(f"✅ Enhanced PDF created: {filepath}")
     return filepath
 
-# ----------------------
-# Flask Routes
-# ----------------------
+ 
 
 @app.route('/')
 def home():
@@ -645,9 +670,7 @@ def health_check():
         'uploads_dir_exists': os.path.exists('uploads'),
         'api_keys_configured': {
             'openrouter': bool(OPENROUTER_API_KEY),
-            'freepik': bool(FREEPIK_API_KEY),
-            'huggingface': bool(HUGGINGFACEHUB_API_TOKEN),
-            'replicate': bool(REPLICATE_API_TOKEN)
+            'freepik': bool(FREEPIK_API_KEY)
         }
     })
 
@@ -694,15 +717,21 @@ def generate_storybook():
         # Ensure uploads directory exists at the start
         os.makedirs('uploads', exist_ok=True)
         
-        prompt = request.form.get('prompt')
-        story_length = request.form.get('length', 'normal')  # New: story length option
+        # Accept both form data and JSON
+        if request.is_json:
+            data = request.get_json()
+            prompt = data.get('prompt')
+            story_length = data.get('length', 'normal')
+        else:
+            prompt = request.form.get('prompt')
+            story_length = request.form.get('length', 'normal')
         
         if not prompt:
             return jsonify({'error': 'Prompt is required'}), 400
         
         story_id = str(uuid.uuid4())[:8]
         
-        print(f"🚀 Generating {story_length} story: {prompt}")
+        print(f" Generating {story_length} story: {prompt}")
         
         # Generate enhanced story text
         story_data = generate_story_pages(prompt, story_length)
@@ -710,6 +739,8 @@ def generate_storybook():
         # Generate images for each page with enhanced consistency
         image_paths = []
         successful_images = 0
+        total_pages = len(story_data['pages'])
+        
         for page in story_data['pages']:
             try:
                 image_path = generate_page_image(
@@ -719,14 +750,28 @@ def generate_storybook():
                     story_id,
                     story_data.get('setting', '')
                 )
-                image_paths.append(image_path)
                 if image_path:
+                    image_paths.append(image_path)
                     successful_images += 1
+                else:
+                    # Create placeholder image if generation fails
+                    placeholder_path = create_placeholder_image(
+                        os.path.join('uploads', f'page_{page["page"]}_{story_id}.png'),
+                        page['page'],
+                        page['text']
+                    )
+                    image_paths.append(placeholder_path)
             except Exception as e:
                 print(f"❌ Error generating image for page {page['page']}: {e}")
-                image_paths.append(None)
+                # Create placeholder image on error
+                placeholder_path = create_placeholder_image(
+                    os.path.join('uploads', f'page_{page["page"]}_{story_id}.png'),
+                    page['page'],
+                    page['text']
+                )
+                image_paths.append(placeholder_path)
         
-        print(f"📊 Generated {successful_images}/{len(story_data['pages'])} images successfully")
+        print(f"✅ Generated {successful_images}/{total_pages} images successfully")
         
         # Generate speech for each page
         audio_paths = []
@@ -742,16 +787,16 @@ def generate_storybook():
                 if audio_path:
                     successful_audio += 1
             except Exception as e:
-                print(f"❌ Error generating audio for page {page['page']}: {e}")
+                print(f" Error generating audio for page {page['page']}: {e}")
                 audio_paths.append(None)
         
-        print(f"🔊 Generated {successful_audio}/{len(story_data['pages'])} audio files successfully")
+        print(f" Generated {successful_audio}/{len(story_data['pages'])} audio files successfully")
         
         # Create enhanced PDF (this should work even without images)
         try:
             pdf_path = create_storybook_pdf(story_data, image_paths, story_id)
         except Exception as e:
-            print(f"❌ Error creating PDF: {e}")
+            print(f" Error creating PDF: {e}")
             pdf_path = None
         
         # Store story data for viewing
@@ -766,7 +811,7 @@ def generate_storybook():
                     'story_length': story_length
                 }, f)
         except Exception as e:
-            print(f"❌ Error saving story data: {e}")
+            print(f" Error saving story data: {e}")
         
         # Return success even if some components failed
         response_data = {
@@ -791,7 +836,7 @@ def generate_storybook():
         return jsonify(response_data)
         
     except Exception as e:
-        print(f"❌ Error generating story: {e}")
+        print(f" Error generating story: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': f'Story generation failed: {str(e)}'}), 500
@@ -880,11 +925,68 @@ def story_reader(story_id):
         story_file = os.path.join("uploads", f"story_data_{story_id}.json")
         with open(story_file, 'r') as f:
             story_info = json.load(f)
+            
+        print("Loaded story_info:", json.dumps(story_info, indent=2))
+        
+        # Ensure all required fields exist in story_data
+        if 'story_data' not in story_info or 'pages' not in story_info['story_data']:
+            raise ValueError('Invalid story data format')
+            
+        # Ensure image_paths and audio_paths exist
+        story_info.setdefault('image_paths', [])
+        story_info.setdefault('audio_paths', [])
+        
+        # Make sure we have enough paths for all pages
+        page_count = len(story_info['story_data']['pages'])
+        while len(story_info['image_paths']) < page_count:
+            story_info['image_paths'].append('')
+        while len(story_info['audio_paths']) < page_count:
+            story_info['audio_paths'].append('')
+            
+        # Clean up paths to use forward slashes and remove 'uploads\' prefix
+        image_paths = []
+        audio_paths = []
+        
+        for path in story_info['image_paths']:
+            if path:
+                # Extract just the filename
+                filename = os.path.basename(path)
+                image_paths.append(filename)
+            else:
+                image_paths.append('')
+                
+        for path in story_info['audio_paths']:
+            if path:
+                # Extract just the filename
+                filename = os.path.basename(path)
+                audio_paths.append(filename)
+            else:
+                audio_paths.append('')
+        
+        print("Image paths:", image_paths)
+        print("Audio paths:", audio_paths)
         
         return render_template('reader.html', 
                              story_data=story_info['story_data'],
-                             image_paths=story_info['image_paths'],
-                             audio_paths=story_info['audio_paths'],
+                             image_paths=image_paths,
+                             audio_paths=audio_paths,
+                             story_id=story_id)
+            
+        # Clean up paths to use forward slashes and remove 'uploads' prefix
+        image_paths = [path.replace('\\', '/').replace('uploads/', '') for path in story_info['image_paths']]
+        audio_paths = [path.replace('\\', '/').replace('uploads/', '') for path in story_info['audio_paths']]
+        
+        # Prepare the story data
+        story_data = {
+            'pages': story_info['story_data']['pages'],
+            'title': story_info['story_data'].get('title', 'Interactive Story'),
+            'moral': story_info['story_data'].get('moral', '')
+        }
+        
+        return render_template('reader.html', 
+                             story_data=story_data,
+                             image_paths=story_info.get('image_paths', []),
+                             audio_paths=story_info.get('audio_paths', []),
                              story_id=story_id)
     except FileNotFoundError:
         return "Story not found", 404
@@ -895,21 +997,50 @@ def story_reader(story_id):
 @app.route('/audio/<filename>')
 def serve_audio(filename):
     try:
-        filepath = os.path.join("uploads", filename)
+        # Validate filename
+        if '..' in filename or filename.startswith('/'):
+            return "Invalid filename", 400
+        
+        safe_filename = secure_filename(filename)
+        
+        # Try both with and without 'uploads' prefix
+        filepath = os.path.join("uploads", safe_filename)
+        if not os.path.exists(filepath) and safe_filename.startswith("uploads\\"):
+            filepath = safe_filename  # Use the full path if it includes 'uploads'
+        
+        if not os.path.exists(filepath):
+            return "Audio file not found", 404
+            
         if filename.lower().endswith('.mp3'):
             mimetype = "audio/mpeg"
         else:
             mimetype = "audio/wav"
         return send_file(filepath, mimetype=mimetype)
-    except FileNotFoundError:
-        return "Audio file not found", 404
+    except Exception as e:
+        print(f"Error serving audio: {e}")
+        return "Error serving audio file", 500
 
 @app.route('/image/<filename>')
 def serve_image(filename):
     try:
-        return send_file(os.path.join("uploads", filename), mimetype="image/png")
-    except FileNotFoundError:
-        return "Image file not found", 404
+        # Validate filename
+        if '..' in filename or filename.startswith('/'):
+            return "Invalid filename", 400
+            
+        safe_filename = secure_filename(filename)
+        
+        # Try both with and without 'uploads' prefix
+        filepath = os.path.join("uploads", safe_filename)
+        if not os.path.exists(filepath) and safe_filename.startswith("uploads\\"):
+            filepath = safe_filename  # Use the full path if it includes 'uploads'
+        
+        if not os.path.exists(filepath):
+            return "Image file not found", 404
+            
+        return send_file(filepath, mimetype="image/png")
+    except Exception as e:
+        print(f"Error serving image: {e}")
+        return "Error serving image file", 500
 
 # New API endpoint for story data
 @app.route('/api/story/<story_id>')
@@ -923,22 +1054,54 @@ def get_story_data(story_id):
     except FileNotFoundError:
         return jsonify({'error': 'Story not found'}), 404
 
+def check_environment():
+    """Check all required environment variables and configurations"""
+    required_vars = {
+        'OPENROUTER_API_KEY': 'Story generation',
+        'FREEPIK_API_KEY': 'Image generation',
+        'SECRET_KEY': 'Application security'
+    }
+    
+    missing_vars = []
+    for var, purpose in required_vars.items():
+        if not os.getenv(var):
+            missing_vars.append(f"{var} ({purpose})")
+    
+    if missing_vars:
+        print("⚠️ WARNING: Missing required environment variables:")
+        for var in missing_vars:
+            print(f"  - {var}")
+        print("\nPlease set these variables in your .env file")
+        return False
+    return True
+
 if __name__ == '__main__':
+    # Check environment variables
+    env_check = check_environment()
+    
     # Ensure uploads directory exists
-    os.makedirs('uploads', exist_ok=True)
-    print("🚀 Enhanced Storybook App Starting...")
-    print("Features:")
-    print("✅ Freepik API Integration (Primary)")
-    print("✅ Multiple story lengths")
-    print("✅ Enhanced PDF generation")
-    print("✅ Improved reader interface")
-    print("✅ Better error handling")
-    print("✅ Graceful fallbacks for failed generations")
-    
-    # Use environment port for production (Render) or default to 5000
-    port = int(os.environ.get('PORT', 5000))
-    host = '0.0.0.0'  # Allow external connections in production
-    debug = os.environ.get('FLASK_ENV') != 'production'
-    
-    print(f"🌐 Starting server on {host}:{port}")
-    app.run(debug=debug, host=host, port=port)
+    try:
+        os.makedirs('uploads', exist_ok=True)
+        print("\n🚀 Enhanced Storybook App Starting...")
+        print("Features:")
+        print("✅ Freepik API Integration")
+        print("✅ Multiple story lengths")
+        print("✅ Enhanced PDF generation")
+        print("✅ Improved reader interface")
+        print("✅ Better error handling")
+        print("✅ gTTS audio generation")
+        
+        if not env_check:
+            print("\n⚠️ Starting with limited functionality due to missing environment variables")
+        
+        port = int(os.environ.get('PORT', 5000))
+        host = '0.0.0.0'
+        debug = os.environ.get('FLASK_ENV') != 'production'
+        
+        print(f"\n🌐 Starting server on {host}:{port}")
+        print(f"🔧 Debug mode: {'on' if debug else 'off'}")
+        
+        app.run(debug=debug, host=host, port=port)
+    except Exception as e:
+        print(f"\n❌ Failed to start application: {e}")
+        raise

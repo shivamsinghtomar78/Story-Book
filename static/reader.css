@@ -1,0 +1,98 @@
+.story-image {
+    max-height: 500px;
+    width: auto;
+    cursor: pointer;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    background-color: #fff;
+    margin: 20px 0;
+}
+
+.story-text {
+    font-size: 1.4rem;
+    line-height: 1.8;
+    color: #2c3e50;
+    margin: 25px 0;
+    padding: 20px;
+    background-color: rgba(255, 255, 255, 0.95);
+    border-radius: 12px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    font-family: 'Fredoka', sans-serif;
+}
+
+.story-text-wrapper {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.reader-card {
+    background-color: #f8f9fa;
+    padding: 30px;
+    border-radius: 15px;
+    box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+}
+
+#stopBtn,
+#audioProgress,
+#audioProgressBar {
+    display: none;
+}
+
+.progress {
+    height: 20px;
+    background-color: #e9ecef;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+/* Audio progress bar initial state */
+#audioProgressBar {
+    width: 0%;
+    transition: width 0.3s ease;
+}
+
+/* Story progress bar */
+.story-progress {
+    height: 20px;
+}
+
+.story-progress .progress-bar {
+    transition: width 0.3s ease;
+    background: linear-gradient(45deg, #6f42c1, #7952b3);
+}
+
+/* Page navigation */
+.page-nav-item {
+    cursor: pointer;
+}
+
+/* Hide elements initially */
+.hidden {
+    display: none;
+}
+
+/* Story reader layout */
+.reader-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.story-content {
+    margin-bottom: 30px;
+}
+
+.audio-controls {
+    margin: 20px 0;
+}
+
+.progress-wrapper {
+    margin: 15px 0;
+}
+
+/* Modal styles */
+.image-modal img {
+    max-width: 100%;
+    height: auto;
+}

@@ -1,13 +1,25 @@
 {% extends "base.html" %}
 
-{% block title %}{{ story_data.title }} - Book Reader{% endblock %}
+{% block title %}Storybook Reader{% endblock %}
 
 {% block content %}
+<script type="text/javascript">
+    // Initialize story data with defaults if needed
+    window.storyData = {{ story_data|default({})|tojson|safe }};
+    window.imagePaths = {{ image_paths|default([])|tojson|safe }};
+    window.audioPaths = {{ audio_paths|default([])|tojson|safe }};
+    window.storyId = "{{ story_id }}";
+    
+    // Log any initialization issues
+    if (!window.storyData || !window.storyData.pages) {
+        console.error('Story data is missing or invalid');
+    }
+</script>
 <div class="row justify-content-center">
     <div class="col-lg-12 col-xl-10">
         <!-- Enhanced Header -->
         <div class="text-center mb-4">
-            <h1 class="display-4 text-primary mb-3">📖 {{ story_data.title }}</h1>
+            <h1 class="display-4 text-primary mb-3">📖 Interactive Story Reader</h1>
             <div class="d-flex justify-content-center gap-3 mb-3">
                 <a href="{{ url_for('home') }}" class="btn btn-outline-primary btn-lg">← Create New Story</a>
                 <button class="btn btn-info btn-lg" onclick="toggleFullscreen()">🔍 Fullscreen</button>
@@ -92,9 +104,8 @@
                         <span class="fw-bold">Reading Progress</span>
                         <span id="progressPercent">{{ (100 / story_data.pages|length)|round }}%</span>
                     </div>
-                    <div class="progress" style="height: 20px;">
-                        <div class="progress-bar bg-gradient progress-bar-striped" id="progressBar" 
-                             style="width: {{ (100 / story_data.pages|length)|round }}%"></div>
+                    <div class="progress story-progress">
+                        <div class="progress-bar bg-gradient progress-bar-striped" id="progressBar"></div>
                     </div>
                 </div>
             </div>
@@ -157,7 +168,9 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Story Illustration</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" title="Close image view" aria-label="Close">
+                    <span class="visually-hidden">Close image view</span>
+                </button>
             </div>
             <div class="modal-body text-center">
                 <img id="enlargedImage" src="" class="img-fluid" alt="Enlarged story illustration">
@@ -169,10 +182,9 @@
 <!-- Story Data (Hidden) -->
 <script type="application/json" id="storyData">
 {
-    "title": "{{ story_data.title }}",
-    "pages": {{ story_data.pages | tojsonfilter }},
-    "image_paths": {{ image_paths | tojsonfilter }},
-    "audio_paths": {{ audio_paths | tojsonfilter }},
+    "pages": {{ story_data|tojson|safe }},
+    "image_paths": {{ image_paths|tojson|safe }},
+    "audio_paths": {{ audio_paths|tojson|safe }},
     "story_id": "{{ story_id }}"
 }
 </script>
