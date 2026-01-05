@@ -6,7 +6,7 @@ import uuid
 import json
 import logging
 from datetime import timedelta
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, send_from_directory
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 from reportlab.lib.pagesizes import letter, A4
@@ -25,7 +25,7 @@ from pymongo import MongoClient
 import bcrypt
 import google.generativeai as genai
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='frontend/dist', static_url_path='/')
 CORS(app)  # Enable CORS for React frontend
 
 # Configuration
@@ -753,8 +753,16 @@ def create_storybook_pdf(story_data, image_paths, story_id):
 
  
 
-@app.route('/')
-def home():
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_frontend(path):
+    if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
+        return send_from_directory(app.static_folder, path)
+    else:
+        return send_from_directory(app.static_folder, 'index.html')
+
+@app.route('/api/welcome')
+def welcome():
     return jsonify({
         "message": "Welcome to the StoryBook AI API",
         "status": "online",
