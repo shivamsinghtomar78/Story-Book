@@ -4,7 +4,9 @@ import time
 import base64
 import uuid
 import json
-from flask import Flask, render_template, request, jsonify, send_file, url_for
+import logging
+from datetime import timedelta
+from flask import Flask, request, jsonify, send_file
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 from reportlab.lib.pagesizes import letter, A4
@@ -15,130 +17,232 @@ from reportlab.lib import colors
 from PIL import Image
 import io
 from gtts import gTTS
-import logging
+
+# New Imports for Auth & DB
+from flask_cors import CORS
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
+from pymongo import MongoClient
+import bcrypt
+import google.generativeai as genai
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here')
+CORS(app)  # Enable CORS for React frontend
 
-def tojson_filter(value):
-    return json.dumps(value, default=str)
-
-app.jinja_env.filters['tojson'] = tojson_filter
-app.jinja_env.add_extension('jinja2.ext.do')
-
-if not app.debug:
-    logging.basicConfig(level=logging.INFO)
-    app.logger.setLevel(logging.INFO)
-
+# Configuration
 load_dotenv()
+app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-prod')
+app.config["JWT_SECRET_KEY"] = os.environ.get('JWT_SECRET_KEY', app.secret_key)
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=1)
+
+jwt = JWTManager(app)
+
+# Database Setup
+MONGO_URI = os.environ.get("MONGO_URI")
+if not MONGO_URI:
+    print("⚠️ WARNING: MONGO_URI not found in .env")
+    client = None
+    db = None
+    users_collection = None
+else:
+    try:
+        client = MongoClient(MONGO_URI)
+        db = client['storybook_db']  # Database name
+        users_collection = db['users']
+        print("✅ Connected to MongoDB Atlas")
+    except Exception as e:
+        print(f"❌ Failed to connect to MongoDB: {e}")
+        client = None
+        users_collection = None
+
+# API Keys
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")  
 FREEPIK_API_KEY = os.getenv("FREEPIK_API_KEY")  
-
 
 if not OPENROUTER_API_KEY:
     print("Warning: OPENROUTER_API_KEY missing in .env")
 if not FREEPIK_API_KEY:
     print("Warning: FREEPIK_API_KEY missing in .env")
 
-OPENROUTER_HEADERS = {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"}
-TEXT_MODEL = "meta-llama/llama-4-maverick:free"
+# Gemini Setup
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+else:
+    print("Warning: GEMINI_API_KEY missing in .env")
 
+OPENROUTER_HEADERS = {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"}
+TEXT_MODEL = "google/gemini-2.0-flash-exp:free"
 
 FREEPIK_HEADERS = {
     "x-freepik-api-key": FREEPIK_API_KEY,
     "Content-Type": "application/json"
 }
 
-def generate_story_pages(prompt, story_length="normal"):
-    """Generate a children's story with enhanced length options"""
-    url = "https://openrouter.ai/api/v1/chat/completions"
+# --- Auth Routes ---
+
+@app.route('/api/auth/signup', methods=['POST'])
+def signup():
+    if users_collection is None:
+        return jsonify({"error": "Database not configured"}), 500
+        
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
+    name = data.get('name')
     
+    if not email or not password:
+        return jsonify({"error": "Email and password required"}), 400
+        
+    if users_collection.find_one({"email": email}):
+        return jsonify({"error": "User already exists"}), 400
+        
+    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    
+    user_id = users_collection.insert_one({
+        "email": email,
+        "password": hashed_password,
+        "name": name,
+        "created_at": time.time()
+    }).inserted_id
+    
+    access_token = create_access_token(identity=str(user_id))
+    
+    return jsonify({
+        "message": "User registered successfully",
+        "token": access_token,
+        "user": {"email": email, "name": name}
+    }), 201
+
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    if users_collection is None:
+        return jsonify({"error": "Database not configured"}), 500
+        
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
+    
+    user = users_collection.find_one({"email": email})
+    
+    if user and bcrypt.checkpw(password.encode('utf-8'), user['password']):
+        access_token = create_access_token(identity=str(user['_id']))
+        return jsonify({
+            "message": "Login successful",
+            "token": access_token,
+            "user": {"email": email, "name": user.get('name')}
+        }), 200
+        
+    return jsonify({"error": "Invalid credentials"}), 401
+
+@app.route('/api/auth/me', methods=['GET'])
+@jwt_required()
+def get_user_profile():
+    return jsonify({"message": "Valid token", "user_id": get_jwt_identity()})
+
+# --- Story Routes ---
+
+
+# List of models - Prioritize Gemini Flash
+MODEL_LIST = [
+    "gemini-2.0-flash-exp",
+    "gemini-1.5-flash", 
+    "google/gemini-2.0-flash-exp:free",
+    "meta-llama/llama-3.2-3b-instruct:free",
+    "microsoft/phi-3-mini-128k-instruct:free",
+    "mistralai/mistral-7b-instruct:free",
+    "openchat/openchat-7:free"
+]
+
+def generate_story_pages(prompt, story_length="normal"):
+    """Generate a children's story using Native Gemini or OpenRouter."""
     
     length_specs = {
-        "short": {"pages": 3, "sentences": "1-2 sentences per page", "description": "Very short story for toddlers"},
-        "normal": {"pages": 5, "sentences": "2-3 sentences per page", "description": "Standard children's story"},
-        "long": {"pages": 8, "sentences": "3-4 sentences per page", "description": "Longer story with more detail"},
-        "extended": {"pages": 10, "sentences": "4-5 sentences per page", "description": "Extended story with rich detail"}
+        "short": {"pages": 3, "sentences": "1-2 sentences", "desc": "Toddler story"},
+        "normal": {"pages": 5, "sentences": "2-3 sentences", "desc": "Standard story"},
+        "long": {"pages": 8, "sentences": "3-4 sentences", "desc": "Detailed story"},
+        "extended": {"pages": 10, "sentences": "4-5 sentences", "desc": "Chapter book style"}
     }
     
     spec = length_specs.get(story_length, length_specs["normal"])
     
-    system_message = f"""You are a creative children's storybook writer. Create exactly {spec['pages']} pages of a children's story.
+    # ENHANCED PROMPT: Requests specific image prompts for each page
+    system_message = f"""You are a professional children's book author. Write a {spec['pages']}-page story.
     
-    Story Requirements:
-    - {spec['description']}
-    - {spec['sentences']}
-    - Rich, descriptive language that engages children
-    - Include dialogue when appropriate
-    - Build character development throughout the story
-    - Create a satisfying story arc with beginning, middle, and end
-    - Use vivid imagery that will translate well to illustrations
-    - Make it educational and entertaining
+    CRITICAL REQUIREMENT: For EVERY page, you must write a specific "image_prompt" that describes exactly what should be drawn.
     
-    Format your response as JSON with this structure:
+    Target Audience: Children 3-8 years old.
+    Style: {spec['desc']}, {spec['sentences']} per page.
+    
+    JSON Output Format:
     {{
-        "title": "Story Title",
-        "character_description": "Detailed description of main character(s) including appearance, clothing, personality for consistent image generation",
-        "setting": "Description of the main setting/world for consistent imagery",
+        "title": "Title",
+        "story_cover_prompt": "A beautiful cover illustration description...",
+        "character_description": "Main character visual details...",
+        "setting": "World details...",
+        "moral": "The lesson",
         "pages": [
-            {{"page": 1, "text": "Page 1 text content with rich detail"}},
-            {{"page": 2, "text": "Page 2 text content with rich detail"}},
-            ...continuing for all {spec['pages']} pages
-        ],
-        "moral": "The lesson or message of the story"
-    }}
-    
-    Make sure the story is appropriate for children aged 3-8 and each page flows naturally to the next."""
-    
-    data = {
-        "model": TEXT_MODEL,
-        "messages": [
-            {"role": "system", "content": system_message},
-            {"role": "user", "content": f"Create a {story_length} {spec['pages']}-page children's storybook about: {prompt}"},
+            {{
+                "page": 1, 
+                "text": "The story text...", 
+                "image_prompt": "A cute cartoon illustration of [character] doing [action] in [setting], soft lighting, 4k"
+            }},
+            ...
         ]
-    }
+    }}
+    """
     
-    try:
-        resp = requests.post(url, headers=OPENROUTER_HEADERS, json=data, timeout=30)
-        if resp.status_code == 200:
+    user_prompt = f"Write a children's story about: {prompt}"
+    
+    last_error = None
+    
+    for model in MODEL_LIST:
+        print(f"🔄 Trying model: {model}")
+        
+        # Branch 1: Native Google Gemini
+        if "gemini" in model and ":" not in model and GEMINI_API_KEY:
             try:
-                content = resp.json()["choices"][0]["message"]["content"]
+                g_model = genai.GenerativeModel(model)
+                response = g_model.generate_content(
+                    f"{system_message}\n\nSTORY TOPIC: {user_prompt}",
+                    generation_config={"response_mime_type": "application/json"}
+                )
                 
-                if content.strip().startswith('{'):
-                    story_data = json.loads(content)
-                else:
-                    # Try to find JSON in the response
-                    import re
-                    json_match = re.search(r'\{.*\}', content, re.DOTALL)
-                    if json_match:
-                        story_data = json.loads(json_match.group())
-                    else:
-                        print(f"Error: No valid JSON found in response. Content: {content}")
-                        raise RuntimeError("No valid JSON found in response")
-                
-                # Validate story data structure
-                required_fields = ['title', 'character_description', 'setting', 'pages', 'moral']
-                missing_fields = [field for field in required_fields if field not in story_data]
-                if missing_fields:
-                    raise RuntimeError(f"Missing required fields in story data: {', '.join(missing_fields)}")
-                
-                # Validate pages structure
-                if not isinstance(story_data['pages'], list) or len(story_data['pages']) != spec['pages']:
-                    raise RuntimeError(f"Invalid pages data. Expected {spec['pages']} pages.")
-                
+                story_data = json.loads(response.text)
+                print(f"✅ Gemini Native Success: {model}")
                 return story_data
-            except json.JSONDecodeError as e:
-                print(f"Error parsing story JSON: {e}\nContent: {content}")
-                raise RuntimeError(f"Failed to parse story JSON response: {e}")
-            except KeyError as e:
-                print(f"Error accessing response data: {e}\nResponse: {resp.json()}")
-                raise RuntimeError(f"Invalid response structure: {e}")
-        else:
-            print(f"Error from API: Status {resp.status_code}\nResponse: {resp.text}")
-            raise RuntimeError(f"Story generation failed: {resp.text}")
-    except requests.RequestException as e:
-        print(f"Network error during story generation: {e}")
-        raise RuntimeError(f"Network error during story generation: {e}")
+            except Exception as e:
+                print(f"⚠️ Gemini Native Error: {e}")
+                last_error = e
+                continue
+
+        # Branch 2: OpenRouter (Fallback)
+        try:
+            url = "https://openrouter.ai/api/v1/chat/completions"
+            data = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": user_prompt},
+                ]
+            }
+            
+            resp = requests.post(url, headers=OPENROUTER_HEADERS, json=data, timeout=45)
+            if resp.status_code == 200:
+                content = resp.json()["choices"][0]["message"]["content"]
+                # Cleanup potential markdown
+                content = content.replace("```json", "").replace("```", "").strip()
+                story_data = json.loads(content)
+                print(f"✅ OpenRouter Success: {model}")
+                return story_data
+            else:
+                print(f"⚠️ API Error {resp.status_code}")
+                time.sleep(1)
+        except Exception as e:
+            print(f"⚠️ Network error: {e}")
+            last_error = e
+            time.sleep(1)
+            
+    raise RuntimeError(f"All models failed. Last error: {last_error}")
 
  
 
@@ -408,21 +512,26 @@ def create_placeholder_image(filepath, page_number, page_text):
         print(f" Failed to create placeholder image: {e}")
         return None
 
-def generate_page_image(character_description, page_text, page_number, story_id, setting_description=""):
+def generate_page_image(character_description, page_text, page_number, story_id, setting_description="", specific_image_prompt=None):
     """Generate an image for a specific page with enhanced consistency"""
     print(f"\n Generating image for page {page_number}")
     
     filename = f"page_{page_number}_{story_id}.png"
     filepath = os.path.join("uploads", filename)
     
-    scene_keywords = extract_scene_keywords(page_text)
-    
-    # Build enhanced prompt with character consistency
-    enhanced_prompt = f"""High-quality children's storybook illustration for the scene:
-    
-    Characters: {character_description}
-    Setting: {setting_description}
-    Scene: {scene_keywords if scene_keywords else page_text[:100]}
+    # Use the AI's specific prompt if available, otherwise fallback to keyword extraction
+    if specific_image_prompt and len(specific_image_prompt) > 10:
+        enhanced_prompt = f"Children's storybook illustration: {specific_image_prompt}. Style: Disney/Pixar-inspired cartoon, vibrant colors, soft lighting, 4k, detailed, masterpiece"
+        print(f" This page has a custom AI prompt: {specific_image_prompt[:50]}...")
+    else:
+        scene_keywords = extract_scene_keywords(page_text)
+        
+        # Build enhanced prompt with character consistency
+        enhanced_prompt = f"""High-quality children's storybook illustration for the scene:
+        
+        Characters: {character_description}
+        Setting: {setting_description}
+        Scene: {scene_keywords if scene_keywords else page_text[:100]}
     
     Style requirements:
     - Whimsical, Disney/Pixar-inspired cartoon style
@@ -563,96 +672,83 @@ def generate_speech_for_page(text, page_number, story_id):
         return None
 
 def create_storybook_pdf(story_data, image_paths, story_id):
-    """Create enhanced PDF storybook with better formatting"""
-    # Ensure uploads directory exists
+    """Create a BEAUTIFUL, Premium Children's Book PDF"""
     os.makedirs('uploads', exist_ok=True)
-    
     filename = f"storybook_{story_id}.pdf"
     filepath = os.path.join("uploads", filename)
     
+    # Use A4 Landscape for a "storybook" feel (or keep Portrait if preferred, let's Stick to Portrait for now but cleaner)
     doc = SimpleDocTemplate(filepath, pagesize=A4, topMargin=0.5*inch, bottomMargin=0.5*inch)
+    
+    # Custom Canvas for Borders
+    def draw_page_border(canvas, doc):
+        canvas.saveState()
+        canvas.setStrokeColor(colors.gold)
+        canvas.setLineWidth(4)
+        canvas.rect(0.3*inch, 0.3*inch, A4[0]-0.6*inch, A4[1]-0.6*inch)
+        canvas.restoreState()
+
     styles = getSampleStyleSheet()
     
-    # Enhanced custom styles
+    # --- Custom Styles ---
     title_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontSize=28,
-        spaceAfter=30,
-        alignment=1,  # Center
-        textColor=colors.darkblue,
-        fontName='Helvetica-Bold'
+        'MainTitle', parent=styles['Heading1'], fontSize=32, alignment=1, 
+        textColor=colors.darkblue, spaceAfter=20, fontName='Helvetica-Bold'
     )
     
-    story_style = ParagraphStyle(
-        'StoryText',
-        parent=styles['Normal'],
-        fontSize=16,
-        spaceAfter=20,
-        alignment=0,  # Left
-        leftIndent=30,
-        rightIndent=30,
-        leading=22
+    body_style = ParagraphStyle(
+        'StoryBody', parent=styles['Normal'], fontSize=18, alignment=1, 
+        leading=24, spaceBefore=20, fontName='Helvetica'
     )
     
-    moral_style = ParagraphStyle(
-        'MoralText',
-        parent=styles['Normal'],
-        fontSize=14,
-        spaceAfter=15,
-        alignment=1,  # Center
-        leftIndent=40,
-        rightIndent=40,
-        textColor=colors.darkgreen,
-        fontName='Helvetica-Oblique'
+    page_num_style = ParagraphStyle(
+        'PageNum', parent=styles['Normal'], fontSize=12, alignment=1, textColor=colors.gray
     )
-    
+
     story = []
     
-    # Title page
+    # --- 1. COVER PAGE ---
+    story.append(Spacer(1, 2*inch))
     story.append(Paragraph(story_data['title'], title_style))
-    story.append(Spacer(1, 30))
+    story.append(Spacer(1, 0.5*inch))
+    story.append(Paragraph("A Story Generated by AI", styles['Heading3']))
+    story.append(Spacer(1, 2*inch))
+    story.append(Paragraph("🤖 ✨", title_style)) # Simple icon
+    story.append(PageBreak())
     
-    # Add moral/message if available
-    if 'moral' in story_data and story_data['moral']:
-        story.append(Paragraph(f"<i>Lesson: {story_data['moral']}</i>", moral_style))
-        story.append(Spacer(1, 20))
-    
-    # Story pages with enhanced layout
+    # --- 2. STORY PAGES ---
     for i, page in enumerate(story_data['pages']):
         page_num = page['page']
         
-        # Add page break between pages (except first)
-        if i > 0:
-            story.append(Spacer(1, 30))
-        
-        # Add page title
-        story.append(Paragraph(f"Page {page_num}", styles['Heading2']))
-        story.append(Spacer(1, 15))
-        
-        # Add image if available
+        # Image Center
         if i < len(image_paths) and image_paths[i] and os.path.exists(image_paths[i]):
             try:
-                # Enhanced image sizing
-                img = RLImage(image_paths[i], width=5*inch, height=3.75*inch)
+                # Maximize image size while keeping aspect ratio
+                img = RLImage(image_paths[i], width=6*inch, height=4.5*inch)
                 story.append(img)
-                story.append(Spacer(1, 15))
-            except Exception as e:
-                print(f"Could not add image for page {page_num}: {e}")
-                # Add placeholder text when image fails
-                story.append(Paragraph(f"<i>[Image placeholder for page {page_num}]</i>", styles['Italic']))
-                story.append(Spacer(1, 15))
-        else:
-            # Add placeholder when no image is available
-            story.append(Paragraph(f"<i>[Image placeholder for page {page_num}]</i>", styles['Italic']))
-            story.append(Spacer(1, 15))
+            except:
+                pass
         
-        # Add text with better formatting
-        story.append(Paragraph(page['text'], story_style))
         story.append(Spacer(1, 20))
+        
+        # Text Center
+        story.append(Paragraph(page['text'], body_style))
+        story.append(Spacer(1, 30))
+        
+        # Page Number
+        story.append(Paragraph(f"- {page_num} -", page_num_style))
+        story.append(PageBreak())
     
-    doc.build(story)
-    print(f"✅ Enhanced PDF created: {filepath}")
+    # --- 3. BACK COVER ---
+    if 'moral' in story_data:
+        story.append(Spacer(1, 3*inch))
+        story.append(Paragraph("The End", title_style))
+        story.append(Spacer(1, 30))
+        story.append(Paragraph(f"<b>Moral of the Story:</b><br/>{story_data['moral']}", body_style))
+    
+    # Build with Border
+    doc.build(story, onFirstPage=draw_page_border, onLaterPages=draw_page_border)
+    print(f"✅ Premium PDF created: {filepath}")
     return filepath
 
  
@@ -661,7 +757,7 @@ def create_storybook_pdf(story_data, image_paths, story_id):
 def home():
     return render_template('index.html')
 
-@app.route('/health')
+@app.route('/api/health')
 def health_check():
     """Health check endpoint for monitoring"""
     return jsonify({
@@ -674,7 +770,7 @@ def health_check():
         }
     })
 
-@app.route('/test-story')
+@app.route('/api/test-story')
 def test_story():
     """Simple test endpoint to verify basic functionality"""
     try:
@@ -711,7 +807,7 @@ def test_story():
             'error': str(e)
         }), 500
 
-@app.route('/generate', methods=['POST'])
+@app.route('/api/generate', methods=['POST'])
 def generate_storybook():
     try:
         # Ensure uploads directory exists at the start
@@ -748,7 +844,8 @@ def generate_storybook():
                     page['text'],
                     page['page'],
                     story_id,
-                    story_data.get('setting', '')
+                    story_data.get('setting', ''),
+                    page.get('image_prompt')
                 )
                 if image_path:
                     image_paths.append(image_path)
@@ -826,10 +923,10 @@ def generate_storybook():
         }
         
         if pdf_path:
-            response_data['pdf_url'] = f'/download-pdf/{story_id}'
+            response_data['pdf_url'] = f'/api/download-pdf/{story_id}'
         
         if successful_audio > 0:
-            response_data['audiobook_url'] = f'/download-audiobook/{story_id}'
+            response_data['audiobook_url'] = f'/api/download-audiobook/{story_id}'
         
         response_data['reader_url'] = f'/reader/{story_id}'
         
@@ -842,7 +939,7 @@ def generate_storybook():
         return jsonify({'error': f'Story generation failed: {str(e)}'}), 500
 
 # Keep all existing download routes...
-@app.route('/download/<filename>')
+@app.route('/api/download/<filename>')
 def download_file(filename):
     try:
         filepath = os.path.join("uploads", filename)
@@ -864,7 +961,7 @@ def download_file(filename):
     except Exception as e:
         return f"Download error: {str(e)}", 500
 
-@app.route('/download-pdf/<story_id>')
+@app.route('/api/download-pdf/<story_id>')
 def download_pdf(story_id):
     try:
         pdf_filename = f"storybook_{story_id}.pdf"
@@ -885,7 +982,7 @@ def download_pdf(story_id):
     except Exception as e:
         return f"PDF download error: {str(e)}", 500
 
-@app.route('/download-audiobook/<story_id>')
+@app.route('/api/download-audiobook/<story_id>')
 def download_audiobook(story_id):
     try:
         import zipfile
@@ -918,129 +1015,7 @@ def download_audiobook(story_id):
     except Exception as e:
         return f"Audiobook download error: {str(e)}", 500
 
-@app.route('/reader/<story_id>')
-def story_reader(story_id):
-    """Enhanced story reader with improved functionality"""
-    try:
-        story_file = os.path.join("uploads", f"story_data_{story_id}.json")
-        with open(story_file, 'r') as f:
-            story_info = json.load(f)
-            
-        print("Loaded story_info:", json.dumps(story_info, indent=2))
-        
-        # Ensure all required fields exist in story_data
-        if 'story_data' not in story_info or 'pages' not in story_info['story_data']:
-            raise ValueError('Invalid story data format')
-            
-        # Ensure image_paths and audio_paths exist
-        story_info.setdefault('image_paths', [])
-        story_info.setdefault('audio_paths', [])
-        
-        # Make sure we have enough paths for all pages
-        page_count = len(story_info['story_data']['pages'])
-        while len(story_info['image_paths']) < page_count:
-            story_info['image_paths'].append('')
-        while len(story_info['audio_paths']) < page_count:
-            story_info['audio_paths'].append('')
-            
-        # Clean up paths to use forward slashes and remove 'uploads\' prefix
-        image_paths = []
-        audio_paths = []
-        
-        for path in story_info['image_paths']:
-            if path:
-                # Extract just the filename
-                filename = os.path.basename(path)
-                image_paths.append(filename)
-            else:
-                image_paths.append('')
-                
-        for path in story_info['audio_paths']:
-            if path:
-                # Extract just the filename
-                filename = os.path.basename(path)
-                audio_paths.append(filename)
-            else:
-                audio_paths.append('')
-        
-        print("Image paths:", image_paths)
-        print("Audio paths:", audio_paths)
-        
-        return render_template('reader.html', 
-                             story_data=story_info['story_data'],
-                             image_paths=image_paths,
-                             audio_paths=audio_paths,
-                             story_id=story_id)
-            
-        # Clean up paths to use forward slashes and remove 'uploads' prefix
-        image_paths = [path.replace('\\', '/').replace('uploads/', '') for path in story_info['image_paths']]
-        audio_paths = [path.replace('\\', '/').replace('uploads/', '') for path in story_info['audio_paths']]
-        
-        # Prepare the story data
-        story_data = {
-            'pages': story_info['story_data']['pages'],
-            'title': story_info['story_data'].get('title', 'Interactive Story'),
-            'moral': story_info['story_data'].get('moral', '')
-        }
-        
-        return render_template('reader.html', 
-                             story_data=story_data,
-                             image_paths=story_info.get('image_paths', []),
-                             audio_paths=story_info.get('audio_paths', []),
-                             story_id=story_id)
-    except FileNotFoundError:
-        return "Story not found", 404
-    except Exception as e:
-        print(f"Error loading story reader: {e}")
-        return "Error loading story", 500
 
-@app.route('/audio/<filename>')
-def serve_audio(filename):
-    try:
-        # Validate filename
-        if '..' in filename or filename.startswith('/'):
-            return "Invalid filename", 400
-        
-        safe_filename = secure_filename(filename)
-        
-        # Try both with and without 'uploads' prefix
-        filepath = os.path.join("uploads", safe_filename)
-        if not os.path.exists(filepath) and safe_filename.startswith("uploads\\"):
-            filepath = safe_filename  # Use the full path if it includes 'uploads'
-        
-        if not os.path.exists(filepath):
-            return "Audio file not found", 404
-            
-        if filename.lower().endswith('.mp3'):
-            mimetype = "audio/mpeg"
-        else:
-            mimetype = "audio/wav"
-        return send_file(filepath, mimetype=mimetype)
-    except Exception as e:
-        print(f"Error serving audio: {e}")
-        return "Error serving audio file", 500
-
-@app.route('/image/<filename>')
-def serve_image(filename):
-    try:
-        # Validate filename
-        if '..' in filename or filename.startswith('/'):
-            return "Invalid filename", 400
-            
-        safe_filename = secure_filename(filename)
-        
-        # Try both with and without 'uploads' prefix
-        filepath = os.path.join("uploads", safe_filename)
-        if not os.path.exists(filepath) and safe_filename.startswith("uploads\\"):
-            filepath = safe_filename  # Use the full path if it includes 'uploads'
-        
-        if not os.path.exists(filepath):
-            return "Image file not found", 404
-            
-        return send_file(filepath, mimetype="image/png")
-    except Exception as e:
-        print(f"Error serving image: {e}")
-        return "Error serving image file", 500
 
 # New API endpoint for story data
 @app.route('/api/story/<story_id>')

@@ -70,3 +70,5 @@ cover/
 *.tmp
 *.temp
 *.log
+
+frontend/node_modules/
