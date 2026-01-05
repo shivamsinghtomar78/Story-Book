@@ -25,7 +25,10 @@ from pymongo import MongoClient
 import bcrypt
 import google.generativeai as genai
 
-app = Flask(__name__, static_folder='frontend/dist', static_url_path='/')
+basedir = os.path.abspath(os.path.dirname(__file__))
+app = Flask(__name__, 
+            static_folder=os.path.join(basedir, 'frontend/dist'),
+            static_url_path='/')
 CORS(app)  # Enable CORS for React frontend
 
 # Configuration
@@ -756,10 +759,18 @@ def create_storybook_pdf(story_data, image_paths, story_id):
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve_frontend(path):
-    if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
+    print(f"Serving frontend for path: {path}")
+    static_file_path = os.path.join(app.static_folder, path)
+    if path != "" and os.path.exists(static_file_path):
         return send_from_directory(app.static_folder, path)
     else:
-        return send_from_directory(app.static_folder, 'index.html')
+        index_path = os.path.join(app.static_folder, 'index.html')
+        print(f"Looking for index.html at: {index_path}")
+        if os.path.exists(index_path):
+            return send_from_directory(app.static_folder, 'index.html')
+        else:
+            print(f"❌ Error: index.html not found at {index_path}")
+            return f"Frontend not found at {index_path}. Build might have failed or path is wrong.", 404
 
 @app.route('/api/welcome')
 def welcome():
