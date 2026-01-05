@@ -755,7 +755,11 @@ def create_storybook_pdf(story_data, image_paths, story_id):
 
 @app.route('/')
 def home():
-    return render_template('index.html')
+    return jsonify({
+        "message": "Welcome to the StoryBook AI API",
+        "status": "online",
+        "version": "2.0.0"
+    })
 
 @app.route('/api/health')
 def health_check():
