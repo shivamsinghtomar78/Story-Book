@@ -16,6 +16,7 @@ export default {
             animation: {
                 blob: "blob 7s infinite",
                 "gradient-x": "gradient-x 15s ease infinite",
+                shimmer: "shimmer 2s linear infinite",
             },
             keyframes: {
                 blob: {
@@ -41,6 +42,10 @@ export default {
                         "background-size": "200% 200%",
                         "background-position": "right center",
                     },
+                },
+                shimmer: {
+                    '0%': { backgroundPosition: '-200% 0' },
+                    '100%': { backgroundPosition: '200% 0' },
                 },
             },
         },
