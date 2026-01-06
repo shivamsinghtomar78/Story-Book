@@ -358,8 +358,6 @@ def generate_image_freepik(prompt, filename="story.png"):
     except Exception as e:
         print(f"❌ Freepik API error: {str(e)}")
         return None
-        print(f" Freepik API error: {e}")
-        return None
 
 # def generate_image_huggingface(prompt, filename="story.png"):
 #     """Generate image using Hugging Face Stable Diffusion XL"""
@@ -1085,33 +1083,33 @@ def serve_frontend(path):
             
             return f"Frontend not found at {index_path}. Build might have failed or path is wrong.", 404
 
+# --- Initialization Logic ---
+# This runs at the top level so it's executed by Gunicorn on Render
+
+# Ensure uploads directory exists
+os.makedirs('uploads', exist_ok=True)
+
+# Check environment variables
+env_check = check_environment()
+
+print("\n🚀 Enhanced Storybook App Starting...")
+print("Features:")
+print("✅ Freepik API Integration")
+print("✅ Multiple story lengths")
+print("✅ Enhanced PDF generation")
+print("✅ Improved reader interface")
+print("✅ Better error handling")
+print("✅ gTTS audio generation")
+
+if not env_check:
+    print("\n⚠️ Starting with limited functionality due to missing environment variables")
+
 if __name__ == '__main__':
-    # Check environment variables
-    env_check = check_environment()
+    port = int(os.environ.get('PORT', 5000))
+    host = '0.0.0.0'
+    debug = os.environ.get('FLASK_ENV') != 'production'
     
-    # Ensure uploads directory exists
-    try:
-        os.makedirs('uploads', exist_ok=True)
-        print("\n🚀 Enhanced Storybook App Starting...")
-        print("Features:")
-        print("✅ Freepik API Integration")
-        print("✅ Multiple story lengths")
-        print("✅ Enhanced PDF generation")
-        print("✅ Improved reader interface")
-        print("✅ Better error handling")
-        print("✅ gTTS audio generation")
-        
-        if not env_check:
-            print("\n⚠️ Starting with limited functionality due to missing environment variables")
-        
-        port = int(os.environ.get('PORT', 5000))
-        host = '0.0.0.0'
-        debug = os.environ.get('FLASK_ENV') != 'production'
-        
-        print(f"\n🌐 Starting server on {host}:{port}")
-        print(f"🔧 Debug mode: {'on' if debug else 'off'}")
-        
-        app.run(debug=debug, host=host, port=port)
-    except Exception as e:
-        print(f"\n❌ Failed to start application: {e}")
-        raise
+    print(f"\n🌐 Starting local server on {host}:{port}")
+    print(f"🔧 Debug mode: {'on' if debug else 'off'}")
+    
+    app.run(debug=debug, host=host, port=port)
