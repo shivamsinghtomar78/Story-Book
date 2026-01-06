@@ -756,21 +756,7 @@ def create_storybook_pdf(story_data, image_paths, story_id):
 
  
 
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def serve_frontend(path):
-    print(f"Serving frontend for path: {path}")
-    static_file_path = os.path.join(app.static_folder, path)
-    if path != "" and os.path.exists(static_file_path):
-        return send_from_directory(app.static_folder, path)
-    else:
-        index_path = os.path.join(app.static_folder, 'index.html')
-        print(f"Looking for index.html at: {index_path}")
-        if os.path.exists(index_path):
-            return send_from_directory(app.static_folder, 'index.html')
-        else:
-            print(f"❌ Error: index.html not found at {index_path}")
-            return f"Frontend not found at {index_path}. Build might have failed or path is wrong.", 404
+# --- Moved to end of file ---
 
 @app.route('/api/welcome')
 def welcome():
@@ -1072,6 +1058,32 @@ def check_environment():
         print("\nPlease set these variables in your .env file")
         return False
     return True
+
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_frontend(path):
+    # Skip API routes to avoid confusion
+    if path.startswith('api/'):
+        return jsonify({"error": "Not Found"}), 404
+        
+    static_file_path = os.path.join(app.static_folder, path)
+    if path != "" and os.path.exists(static_file_path):
+        return send_from_directory(app.static_folder, path)
+    else:
+        index_path = os.path.join(app.static_folder, 'index.html')
+        if os.path.exists(index_path):
+            return send_from_directory(app.static_folder, 'index.html')
+        else:
+            # Diagnostic info for Render logs
+            print(f"DEBUG: Current working directory: {os.getcwd()}")
+            print(f"DEBUG: Static folder: {app.static_folder}")
+            if os.path.exists('frontend'):
+                print(f"DEBUG: contents of frontend/: {os.listdir('frontend')}")
+                if os.path.exists('frontend/dist'):
+                    dist_dir = 'frontend/dist'
+                    print(f"DEBUG: contents of {dist_dir}/: {os.listdir(dist_dir)}")
+            
+            return f"Frontend not found at {index_path}. Build might have failed or path is wrong.", 404
 
 if __name__ == '__main__':
     # Check environment variables
