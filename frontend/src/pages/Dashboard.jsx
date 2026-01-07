@@ -39,9 +39,18 @@ export default function Dashboard() {
                     <Book className="w-6 h-6 text-cyan-400" />
                     <span className="font-bold text-white">Dashboard</span>
                 </div>
-                <button onClick={handleLogout} className="text-slate-400 hover:text-white transition-colors">
-                    <LogOut className="w-5 h-5" />
-                </button>
+                <div className="flex items-center gap-4">
+                    <button
+                        onClick={() => navigate('/library')}
+                        className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                    >
+                        <Book className="w-4 h-4" />
+                        My Library
+                    </button>
+                    <button onClick={handleLogout} className="text-slate-400 hover:text-white transition-colors">
+                        <LogOut className="w-5 h-5" />
+                    </button>
+                </div>
             </header>
 
             <div className="max-w-5xl mx-auto px-4 py-12 relative z-0">
@@ -123,22 +132,22 @@ export default function Dashboard() {
                                     Create New
                                 </button>
                                 <div className="flex space-x-3">
-                                    {story.pdf_url && (
+                                    {story?.story_id && (
                                         <a
-                                            href={story.pdf_url}
+                                            href={`/api/download-pdf/${story.story_id}`}
                                             target="_blank"
-                                            download
+                                            rel="noopener noreferrer"
                                             className="flex items-center px-4 py-2 bg-indigo-900/30 text-indigo-300 border border-indigo-500/30 rounded-lg font-medium hover:bg-indigo-900/50 transition-colors"
                                         >
                                             <Download className="w-4 h-4 mr-2" />
                                             PDF
                                         </a>
                                     )}
-                                    {story.audiobook_url && (
+                                    {story?.story_id && (
                                         <a
-                                            href={story.audiobook_url}
+                                            href={`/api/download-audiobook/${story.story_id}`}
                                             target="_blank"
-                                            download
+                                            rel="noopener noreferrer"
                                             className="flex items-center px-4 py-2 bg-pink-900/30 text-pink-300 border border-pink-500/30 rounded-lg font-medium hover:bg-pink-900/50 transition-colors"
                                         >
                                             <Headphones className="w-4 h-4 mr-2" />
@@ -150,13 +159,13 @@ export default function Dashboard() {
 
                             <div className="grid gap-8">
                                 <div className="text-center py-8">
-                                    <h1 className="text-4xl font-serif font-bold text-white mb-2 drop-shadow-md">{story.story_data.title}</h1>
-                                    {story.story_data.moral && (
-                                        <p className="text-cyan-300 italic">"{story.story_data.moral}"</p>
+                                    <h1 className="text-4xl font-serif font-bold text-white mb-2 drop-shadow-md">{story?.story?.title}</h1>
+                                    {story?.story?.moral && (
+                                        <p className="text-cyan-300 italic">"{story?.story?.moral}"</p>
                                     )}
                                 </div>
 
-                                {story.story_data.pages.map((page, index) => (
+                                {story?.story?.pages?.map((page, index) => (
                                     <motion.div
                                         initial={{ opacity: 0, y: 30 }}
                                         animate={{ opacity: 1, y: 0 }}
@@ -166,12 +175,12 @@ export default function Dashboard() {
                                     >
                                         <div className="w-full md:w-1/2 aspect-[4/3] bg-slate-800 rounded-xl overflow-hidden shadow-inner relative group border border-slate-700">
                                             <img
-                                                src={`/api/download/page_${page.page}_${story.story_id}.png`}
+                                                src={`/api/download/page_${page.page}_${story?.story_id}.png`}
                                                 alt={`Page ${page.page}`}
                                                 className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                                                 onError={(e) => {
                                                     e.target.onerror = null;
-                                                    e.target.src = "https://placehold.co/600x400/1e293b/cbd5e1?text=Illustration+Generating...";
+                                                    e.target.src = "https://placehold.co/600x400/1e293b/cbd5e1?text=Illustration+Error";
                                                 }}
                                             />
                                         </div>
@@ -189,7 +198,7 @@ export default function Dashboard() {
                                                     <audio
                                                         controls
                                                         className="w-full h-8 accent-purple-500"
-                                                        src={`/api/download/page_${page.page}_${story.story_id}.mp3`}
+                                                        src={`/api/download/page_${page.page}_${story?.story_id}.mp3`}
                                                     >
                                                         Your browser does not support the audio element.
                                                     </audio>

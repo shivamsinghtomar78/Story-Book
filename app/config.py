@@ -14,7 +14,7 @@ class Config:
     
     # JWT
     JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', SECRET_KEY)
-    JWT_ACCESS_TOKEN_EXPIRES = 86400  # 24 hours
+    JWT_ACCESS_TOKEN_EXPIRES = 2592000  # 30 days
     
     # Database
     MONGO_URI = os.getenv('MONGO_URI')
@@ -29,11 +29,11 @@ class Config:
     MODEL_LIST = [
         "gemini-2.0-flash-exp",
         "gemini-1.5-flash",
+        "gemini-1.5-flash-8b",
         "google/gemini-2.0-flash-exp:free",
         "meta-llama/llama-3.2-3b-instruct:free",
-        "microsoft/phi-3-mini-128k-instruct:free",
         "mistralai/mistral-7b-instruct:free",
-        "openchat/openchat-7b:free"
+        "microsoft/phi-3-mini-128k-instruct:free"
     ]
     
     # Redis

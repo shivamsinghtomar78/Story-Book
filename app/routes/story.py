@@ -133,9 +133,45 @@ def generate_storybook():
         
         logger.info(f"Story generation completed for {story_id}")
         
+        # Auto-save to library if user is authenticated
+        saved_id = None
+        try:
+            from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
+            
+            # Check if user is authenticated (optional)
+            verify_jwt_in_request(optional=True)
+            user_id = get_jwt_identity()
+            
+            if user_id:
+                from app.models.story import get_story_model
+                from app.routes.library import stories_collection
+                
+                if stories_collection:
+                    story_model = get_story_model(stories_collection)
+                    
+                    # Prepare data for saving
+                    save_data = {
+                        'story_id': story_id,
+                        'title': story_data.get('title', 'Untitled Story'),
+                        'prompt': prompt,
+                        'story_length': story_length,
+                        'story_mode': 'standard',
+                        'story': story_data,
+                        'image_files': image_filenames,
+                        'audio_files': audio_filenames,
+                        'pdf_file': pdf_filename
+                    }
+                    
+                    saved_id = story_model.create(user_id, save_data)
+                    logger.info(f"Story auto-saved to library: {saved_id}")
+        except Exception as save_error:
+            # Don't fail the entire request if save fails
+            logger.warning(f"Auto-save failed: {save_error}")
+        
         return jsonify({
             'success': True,
             'story_id': story_id,
+            'saved_id': saved_id,
             'story': story_data,
             'image_files': image_filenames,
             'audio_files': audio_filenames,
@@ -252,4 +288,31 @@ def download_audiobook(story_id):
     
     except Exception as e:
         logger.error(f"Error downloading audiobook: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@story_bp.route('/download/<filename>', methods=['GET'])
+def download_file(filename):
+    """Download any file from uploads folder.
+    
+    Args:
+        filename: Name of the file to download
+    
+    Returns:
+        File from uploads folder
+    """
+    try:
+        from app.config import Config
+        from flask import send_from_directory
+        
+        # Security check: ensure filename doesn't contain path traversal
+        if '..' in filename or filename.startswith('/'):
+            return jsonify({'error': 'Invalid filename'}), 400
+            
+        return send_from_directory(
+            os.path.join(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), Config.UPLOAD_FOLDER),
+            filename
+        )
+    except Exception as e:
+        logger.error(f"Error downloading file {filename}: {e}")
         return jsonify({'error': str(e)}), 500

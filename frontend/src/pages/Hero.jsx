@@ -1,9 +1,17 @@
+import { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Sparkles, BookOpen } from 'lucide-react';
 
 export default function Hero() {
     const navigate = useNavigate();
+
+    useEffect(() => {
+        const token = localStorage.getItem('token');
+        if (token) {
+            navigate('/dashboard');
+        }
+    }, [navigate]);
 
     return (
         <div className="min-h-screen bg-slate-950 overflow-hidden relative">

@@ -12,6 +12,7 @@ from app.utils.request_id import add_request_id_middleware
 from app.utils.sentry_config import initialize_sentry
 from app.routes.auth import auth_bp, initialize_db as init_auth_db
 from app.routes.story import story_bp
+from app.routes.library import library_bp, initialize_library_db
 
 
 def create_app(config_name='default'):
@@ -26,10 +27,12 @@ def create_app(config_name='default'):
     # Determine base directory
     basedir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
     
+    static_folder = os.path.join(basedir, 'frontend', 'dist')
+    
     # Create Flask app
     app = Flask(
         __name__,
-        static_folder=os.path.join(basedir, 'frontend/dist'),
+        static_folder=static_folder,
         static_url_path='/'
     )
     
@@ -66,9 +69,13 @@ def create_app(config_name='default'):
     # Initialize database for auth
     init_auth_db()
     
+    # Initialize database for library
+    initialize_library_db()
+    
     # Register blueprints
     app.register_blueprint(auth_bp)
     app.register_blueprint(story_bp)
+    app.register_blueprint(library_bp)
     
     # Create upload folder
     os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
@@ -94,6 +101,20 @@ def create_app(config_name='default'):
             'message': 'Welcome to the StoryBook AI API',
             'status': 'online',
             'version': '2.0.0'
+        }
+    
+    @app.route('/api/debug-static')
+    def debug_static():
+        """Debug endpoint to list static files."""
+        files = []
+        if os.path.exists(app.static_folder):
+            for root, dirs, filenames in os.walk(app.static_folder):
+                for f in filenames:
+                    files.append(os.path.relpath(os.path.join(root, f), app.static_folder))
+        return {
+            'static_folder': app.static_folder,
+            'exists': os.path.exists(app.static_folder),
+            'files': files
         }
     
     # Serve frontend
