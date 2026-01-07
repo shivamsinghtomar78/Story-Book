@@ -117,7 +117,12 @@ npm list --depth=0 || true  # Don't fail if some packages missing
 # Run the build
 echo ""
 echo "🔨 Building frontend with Vite..."
-NODE_ENV=production npm run build
+NODE_ENV=production npm run build || {
+    echo "❌ ERROR: Frontend build failed!"
+    echo "📂 Frontend directory contents:"
+    ls -laR
+    exit 1
+}
 
 # ==========================================
 # 3. VERIFY BUILD OUTPUT
