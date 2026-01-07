@@ -105,7 +105,7 @@ fi
 # Install npm dependencies
 echo ""
 echo "📥 Installing npm dependencies..."
-npm ci --prefer-offline --no-audit || npm install
+npm ci --prefer-offline --no-audit --legacy-peer-deps || npm install --legacy-peer-deps
 
 echo "✅ npm dependencies installed"
 
@@ -117,10 +117,9 @@ npm list --depth=0 || true  # Don't fail if some packages missing
 # Run the build
 echo ""
 echo "🔨 Building frontend with Vite..."
-NODE_ENV=production npm run build || {
+NODE_ENV=production npm run build 2>&1 || {
     echo "❌ ERROR: Frontend build failed!"
-    echo "📂 Frontend directory contents:"
-    ls -laR
+    echo "Build output above ↑"
     exit 1
 }
 

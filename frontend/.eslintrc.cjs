@@ -6,7 +6,7 @@ module.exports = {
     'plugin:react/recommended',
     'plugin:react-hooks/recommended',
   ],
-  ignorePatterns: ['dist', '.eslintrc.cjs'],
+  ignorePatterns: ['dist', '.eslintrc.cjs', 'node_modules'],
   parserOptions: {
     ecmaVersion: 'latest',
     sourceType: 'module',
@@ -22,5 +22,7 @@ module.exports = {
   rules: {
     'react/react-in-jsx-scope': 'off',
     'react/prop-types': 'off',
+    'react/no-unescaped-entities': 'warn',
+    'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
   },
 }

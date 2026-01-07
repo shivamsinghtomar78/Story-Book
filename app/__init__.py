@@ -1,6 +1,6 @@
 """Flask application factory."""
 import os
-from flask import Flask, send_from_directory
+from flask import Flask, send_from_directory, send_file
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from datetime import timedelta
@@ -42,9 +42,9 @@ def create_app(config_name='default'):
     app.config["JWT_SECRET_KEY"] = Config.JWT_SECRET_KEY
     app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(seconds=Config.JWT_ACCESS_TOKEN_EXPIRES)
     
-    # Validate environment
+    # Validate environment (warn on missing, don't raise)
     try:
-        Config.validate()
+        Config.validate(raise_on_missing=False)
     except ValueError as e:
         app.logger.warning(f"Configuration warning: {e}")
     

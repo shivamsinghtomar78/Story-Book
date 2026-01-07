@@ -50,8 +50,12 @@ class Config:
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB
     
     @classmethod
-    def validate(cls):
-        """Validate required environment variables."""
+    def validate(cls, raise_on_missing=False):
+        """Validate required environment variables.
+        
+        Args:
+            raise_on_missing: If True, raise error on missing vars. Otherwise just warn.
+        """
         required_vars = {
             'MONGO_URI': cls.MONGO_URI,
             'OPENROUTER_API_KEY': cls.OPENROUTER_API_KEY,
@@ -61,7 +65,10 @@ class Config:
         missing = [key for key, value in required_vars.items() if not value]
         
         if missing:
-            raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
+            message = f"Missing environment variables: {', '.join(missing)}"
+            if raise_on_missing:
+                raise ValueError(message)
+            return False
         
         return True
 

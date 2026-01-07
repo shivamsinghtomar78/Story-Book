@@ -3,14 +3,16 @@ services:
     name: storybook-app
     env: python
     buildCommand: bash build.sh
-    startCommand: gunicorn --bind 0.0.0.0:$PORT wsgi:app
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 3 --worker-class sync --timeout 60 wsgi:app
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
       - key: NODE_VERSION
-        value: 20
+        value: 20.19.6
       - key: FLASK_ENV
         value: production
       - key: NODE_ENV
         value: production
+      - key: PYTHONDONTWRITEBYTECODE
+        value: "1"
     autoDeploy: false
